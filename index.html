@@ -515,17 +515,23 @@ function inferDate(m,d){
 }
 /* 텍스트 어디든 박힌 날짜 토큰(YYYY.MM.DD / MM.DD / M/D)을 찾아 ISO 문자열 배열로 반환 */
 function extractDatesFromText(text,ctxYear){
-  var re=/(\d{4})[.\-](\d{1,2})[.\-](\d{1,2})|(\d{1,2})[\/](\d{1,2})|(\d{1,2})\.(\d{1,2})(?!\d)/g;
-  var out=[],m;
+  var re=/(\d{4})[.\-](\d{1,2})[.\-](\d{1,2})|(\d{1,2})[\/](\d{1,2})|(\d{1,2})\.(\d{1,2})(?!\d)|~\s*(\d{1,2})(?!\d)(?!\s*[\/.]\d)/g;
+  var out=[],m,lastMonth=null;
   while((m=re.exec(text))){
     if(m[1]){
       var y=+m[1],mo=+m[2],d=+m[3];
-      if(mo>=1&&mo<=12&&d>=1&&d<=31)out.push(y+'-'+pad(mo)+'-'+pad(d));
+      if(mo>=1&&mo<=12&&d>=1&&d<=31){out.push(y+'-'+pad(mo)+'-'+pad(d));lastMonth=mo;}
+      continue;
+    }
+    if(m[8]){
+      var d4=+m[8];
+      if(lastMonth&&d4>=1&&d4<=31)out.push((ctxYear||sbToday().getFullYear())+'-'+pad(lastMonth)+'-'+pad(d4));
       continue;
     }
     var mo2=m[4]?+m[4]:+m[6],d2=m[4]?+m[5]:+m[7];
     if(mo2<1||mo2>12||d2<1||d2>31)continue;
     out.push(ctxYear?(ctxYear+'-'+pad(mo2)+'-'+pad(d2)):inferDate(mo2,d2));
+    lastMonth=mo2;
   }
   return out;
 }
@@ -543,6 +549,7 @@ function parseMail(txt){
   var ctxYear=yMatch?+yMatch[1]:null;
   var res={title:'',biz:'',open:'',phases:[],owners:{},reviews:[]};
   var curPhase=null;
+  var curGroup=null;
   var revMeta={title:'',date:'',time:'',location:'',url:''};
 
   function pushPhase(name,range){
@@ -572,12 +579,22 @@ function parseMail(txt){
     if(m){revMeta.location=m[1].trim();return;}
     if(/리뷰/.test(line)&&!revMeta.title){revMeta.title=line.replace(/^\[[^\]]*\]\s*/,'').trim();}
 
-    // 번호. 단계명 (콜론/날짜 없는 헤더 줄) — 예: "1.디자인 1차"
+    // 번호. 단계명 (콜론/날짜 없는 헤더 줄) — 예: "1.디자인 1차", "1. 디자인시안 (1p~3P기준진행)"
     m=line.match(/^\d+\.\s*([^:：]+)$/);
     if(m&&!/\d{1,2}[\/.]\d{1,2}/.test(m[1])){
-      curPhase={name:m[1].trim(),start:'',end:'',owner:'',content:''};
-      res.phases.push(curPhase);
+      curGroup=m[1].replace(/\([^)]*\)/g,'').trim()||m[1].trim();
+      curPhase=null;
       return;
+    }
+
+    // 헤더 바로 다음에 라벨 없이 날짜만 있는 줄 — 예: "5.오픈" 다음 줄 "8/18"
+    if(curGroup&&!curPhase&&/^(?:\d{4}[.\-])?\d{1,2}[\/.]\d{1,2}(?:[^:：]*)?$/.test(line)){
+      var bare=extractDatesFromText(line,ctxYear);
+      if(bare.length){
+        if(/^(오픈|open)$/i.test(curGroup))res.open=bare[0];
+        else pushPhase(curGroup,{start:bare.length>1?bare[0]:null,end:bare[bare.length-1]});
+        return;
+      }
     }
 
     // 일정 : <범위> (헤더 줄 다음에 오는 하위 항목)
@@ -585,7 +602,7 @@ function parseMail(txt){
     if(m){
       var r=parseDateRangeToken(m[1],ctxYear);
       if(r){
-        if(!curPhase)pushPhase('일정',r);
+        if(!curPhase)pushPhase(curGroup||'일정',r);
         else{
           curPhase.start=r.start!=null?r.start:(res.phases.length>1?res.phases[res.phases.length-2].end:r.end);
           curPhase.end=r.end;
@@ -632,7 +649,7 @@ function parseMail(txt){
       var main=fb?rest.slice(0,fb.index).trim():rest.trim();
       var range=parseDateRangeToken(main,ctxYear);
       if(range){
-        pushPhase(label,range);
+        pushPhase(curGroup&&curGroup!==label?curGroup+' · '+label:label,range);
         if(fb){
           var fbDates=extractDatesFromText(fb[1],ctxYear);
           if(fbDates.length)res.reviews.push({title:label+' 피드백',date:fbDates[fbDates.length-1],time:'',location:'',url:''});
@@ -660,8 +677,11 @@ function parseMail(txt){
   });
 
   res.phases.forEach(function(p){
-    if(res.owners[p.name])p.owner=res.owners[p.name];
-    else if((p.name==='Dev'||p.name==='Stg'||p.name==='QA')&&res.owners['개발'])p.owner=res.owners['개발'];
+    if(res.owners[p.name]){p.owner=res.owners[p.name];return;}
+    if((p.name==='Dev'||p.name==='Stg'||p.name==='QA')&&res.owners['개발']){p.owner=res.owners['개발'];return;}
+    ['디자인','퍼블','개발'].forEach(function(k){
+      if(!p.owner&&res.owners[k]&&p.name.indexOf(k)>=0)p.owner=res.owners[k];
+    });
   });
 
   if(revMeta.date||revMeta.time||revMeta.location){
