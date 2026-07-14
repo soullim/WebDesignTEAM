@@ -65,6 +65,10 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
 .dbtitle{font-family:var(--ftitle);font-size:22px;font-weight:800}
 .dbsub{font-size:14px;color:var(--text3);margin-top:3px}
 .hbtns{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.dbsync{font-size:12.5px;color:var(--text3);margin-top:4px;min-height:16px}
+.dbsync.warn{color:var(--amber)}
+.dbsync.ok{color:var(--green)}
+.dbsync.err{color:var(--red)}
 
 .sec{background:var(--white);border:1px solid var(--border);border-radius:14px;padding:1.1rem 1.25rem;margin-bottom:1rem}
 .sechd{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:10px}
@@ -308,13 +312,17 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
     <div>
       <div class="dbtitle">일정보드</div>
       <div class="dbsub">메일·레드마인 텍스트를 붙여넣으면 일정이 자동으로 정리돼요</div>
+      <div class="dbsync" id="sbSync"></div>
     </div>
     <div class="hbtns">
       <button class="btn pri" data-act="open-mail"><i class="ti ti-mail"></i> 메일 붙여넣기</button>
       <button class="btn tl" data-act="open-rm"><i class="ti ti-bug"></i> 레드마인 붙여넣기</button>
       <button class="btn" data-act="add-manual"><i class="ti ti-plus"></i> 직접 추가</button>
+      <button class="btn" data-act="share-push"><i class="ti ti-cloud-upload"></i> 팀 공유</button>
+      <button class="btn ghost" data-act="share-pull"><i class="ti ti-cloud-download"></i> 팀 데이터 불러오기</button>
       <button class="btn ghost" data-act="export"><i class="ti ti-download"></i> 내보내기</button>
       <button class="btn ghost" data-act="import"><i class="ti ti-upload"></i> 가져오기</button>
+      <button class="btn ghost" data-act="share-settings" title="팀 공유 설정"><i class="ti ti-settings"></i></button>
       <input type="file" id="sbImportFile" accept=".json" style="display:none">
     </div>
   </div>
@@ -469,10 +477,12 @@ function loadSbState(){
   localStorage.setItem(SB_FLAG,'1');
   return sbSeed();
 }
-function sbBlank(){return {members:JSON.parse(JSON.stringify(DEFAULT_MEMBERS)),projects:[],tasks:[],ui:{solo:true}};}
-function sbSave(){localStorage.setItem(SB_LS,JSON.stringify(sb));}
+function sbBlank(){return {members:JSON.parse(JSON.stringify(DEFAULT_MEMBERS)),projects:[],tasks:[],ui:{solo:true},updatedAt:''};}
+function sbStore(){localStorage.setItem(SB_LS,JSON.stringify(sb));}
+function sbSave(){delete sb._seed;sb.updatedAt=new Date().toISOString();sbStore();setSbDirty(true);}
 function sbSeed(){
   var s=sbBlank();
+  s._seed=true;
   s.projects.push({id:uid('p'),title:'공동구매 프로세스 개선',biz:'스마트러닝',open:'2026-07-21',done:false,reopen:false,issues:[],
     phases:[
       {name:'디자인',start:'2026-05-18',end:'2026-05-20',owner:'김수영',content:''},
@@ -1265,6 +1275,93 @@ function importSbJson(file){
   rd.readAsText(file);
 }
 
+/* ══════════════ 팀 공유 (GitHub 저장소 동기화) ══════════════
+   저장소의 board-data.json을 팀 공유 데이터로 사용.
+   읽기는 공개 API라 토큰 없이 동작, 쓰기(팀 공유)만 GitHub 토큰 필요. */
+var SB_REPO='soullim/WebDesignTEAM', SB_DATA='board-data.json', SB_BRANCH='main';
+var SB_TOKEN_KEY='wdsb_gh_token', SB_DIRTY_KEY='wdsb_dirty';
+function ghToken(){return localStorage.getItem(SB_TOKEN_KEY)||'';}
+function sbDirty(){return localStorage.getItem(SB_DIRTY_KEY)==='1';}
+function setSbDirty(v){if(v)localStorage.setItem(SB_DIRTY_KEY,'1');else localStorage.removeItem(SB_DIRTY_KEY);syncStatus();}
+function fmtStamp(s){if(!s)return'';var d=new Date(s);return (d.getMonth()+1)+'/'+d.getDate()+' '+pad(d.getHours())+':'+pad(d.getMinutes());}
+function syncStatus(msg,cls){
+  var el=document.getElementById('sbSync');if(!el)return;
+  if(msg){el.textContent=msg;el.className='dbsync'+(cls?' '+cls:'');return;}
+  if(sbDirty()){el.textContent='⚠ 공유되지 않은 변경사항 — [팀 공유]를 누르면 다른 PC에서도 보여요';el.className='dbsync warn';}
+  else if(sb.updatedAt){el.textContent='팀 데이터 동기화됨 · '+fmtStamp(sb.updatedAt);el.className='dbsync ok';}
+  else{el.textContent='';el.className='dbsync';}
+}
+async function sbRemoteLoad(manual){
+  try{
+    var r=await fetch('https://api.github.com/repos/'+SB_REPO+'/contents/'+SB_DATA+'?ref='+SB_BRANCH,
+      {cache:'no-store',headers:{Accept:'application/vnd.github.raw+json'}});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    var remote=await r.json();
+    if(!remote||!remote.members)throw new Error('데이터 형식 오류');
+    if((remote.updatedAt||'')>(sb.updatedAt||'')){
+      if(sbDirty()&&!confirm('다른 PC에서 업데이트된 팀 데이터가 있어요.\n아직 공유하지 않은 내 변경사항을 버리고 팀 데이터를 불러올까요?')){syncStatus();return;}
+      sb=remote;sbStore();setSbDirty(false);renderSbAll();
+      syncStatus('팀 데이터 불러옴 · '+fmtStamp(remote.updatedAt),'ok');
+      if(manual)toast('팀 데이터를 불러왔어요');
+    }else{
+      if(manual)toast('이미 최신 데이터예요');
+      syncStatus();
+    }
+  }catch(e){
+    if(manual){toast('팀 데이터를 불러오지 못했어요 ('+e.message+')');syncStatus('팀 데이터 불러오기 실패 — '+e.message,'err');}
+    else syncStatus();
+  }
+}
+async function sbRemotePush(){
+  var tk=ghToken();
+  if(!tk){openTokenModal();return;}
+  syncStatus('팀 공유 중...','');
+  try{
+    var sha=null,remoteStamp='';
+    var meta=await fetch('https://api.github.com/repos/'+SB_REPO+'/contents/'+SB_DATA+'?ref='+SB_BRANCH,
+      {cache:'no-store',headers:{Accept:'application/vnd.github+json',Authorization:'Bearer '+tk}});
+    if(meta.ok){
+      var mj=await meta.json();sha=mj.sha;
+      try{var cur=JSON.parse(decodeURIComponent(escape(atob(String(mj.content||'').replace(/\n/g,'')))));remoteStamp=cur.updatedAt||'';}catch(e2){}
+    }else if(meta.status!==404)throw new Error('HTTP '+meta.status);
+    if(remoteStamp&&remoteStamp>(sb.updatedAt||'')){
+      if(!confirm('다른 PC에서 더 최신 데이터가 공유되어 있어요.\n내 데이터로 덮어쓸까요? (취소 후 [팀 데이터 불러오기]로 확인 가능)')){syncStatus();return;}
+    }
+    delete sb._seed;
+    sb.updatedAt=new Date().toISOString();
+    var body={message:'일정보드 데이터 업데이트 ('+tISO()+')',content:btoa(unescape(encodeURIComponent(JSON.stringify(sb,null,1)))),branch:SB_BRANCH};
+    if(sha)body.sha=sha;
+    var r=await fetch('https://api.github.com/repos/'+SB_REPO+'/contents/'+SB_DATA,
+      {method:'PUT',headers:{Accept:'application/vnd.github+json',Authorization:'Bearer '+tk,'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(!r.ok){
+      if(r.status===401)throw new Error('토큰이 유효하지 않아요');
+      if(r.status===403)throw new Error('토큰에 이 저장소 쓰기 권한이 없어요');
+      if(r.status===409||r.status===422)throw new Error('충돌이 났어요 — [팀 데이터 불러오기] 후 다시 시도');
+      throw new Error('HTTP '+r.status);
+    }
+    sbStore();setSbDirty(false);
+    syncStatus('팀 공유됨 · '+fmtStamp(sb.updatedAt),'ok');
+    toast('팀 저장소에 공유했어요');
+  }catch(e){
+    syncStatus('공유 실패 — '+e.message,'err');
+    toast('공유 실패 — '+e.message);
+  }
+}
+function openTokenModal(){
+  openModal('<h3 class="mtitle">팀 공유 설정</h3>'
+    +'<p class="m-sub">일정 데이터를 깃허브 저장소(board-data.json)에 저장해 다른 PC와 공유합니다.<br>불러오기는 토큰 없이 자동으로 되고, <b>공유(쓰기)할 때만</b> GitHub 토큰이 필요해요.</p>'
+    +'<div class="note" style="margin-bottom:10px">토큰 발급: GitHub → Settings → Developer settings → <b>Fine-grained tokens</b> → Generate new token<br>'
+    +'· Repository access: <b>Only select repositories → WebDesignTEAM</b><br>'
+    +'· Permissions → Contents: <b>Read and write</b><br>'
+    +'토큰은 이 브라우저에만 저장되며 저장소에 올라가지 않아요.</div>'
+    +'<div class="fld full"><label>GitHub 토큰</label><input class="fi" id="ghTk" type="password" value="'+esc(ghToken())+'" placeholder="github_pat_..."></div>'
+    +'<div class="factions">'
+    +(ghToken()?'<button class="btn" data-act="token-clear">토큰 삭제</button>':'')
+    +'<button class="btn" data-act="modal-close">닫기</button>'
+    +'<button class="btn pri" data-act="token-save">저장하고 공유</button></div>');
+  $('#ghTk').focus();
+}
+
 /* ══════════════ 일정보드 이벤트 ══════════════ */
 document.addEventListener('click',function(e){
   var el=e.target.closest('[data-act]');
@@ -1275,6 +1372,16 @@ document.addEventListener('click',function(e){
   else if(act==='add-manual')rmPreview({rm:'',url:'',title:'',tag:'디자인',owner:'',start:tISO(),end:tISO(),status:'진행',prio:'보통',biz:'기타'},null);
   else if(act==='export')exportSbJson();
   else if(act==='import')$('#sbImportFile').click();
+  else if(act==='share-push')sbRemotePush();
+  else if(act==='share-pull')sbRemoteLoad(true);
+  else if(act==='share-settings')openTokenModal();
+  else if(act==='token-save'){
+    var tv=$('#ghTk').value.trim();
+    if(!tv){toast('토큰을 입력해 주세요');return;}
+    localStorage.setItem(SB_TOKEN_KEY,tv);
+    closeModal();sbRemotePush();
+  }
+  else if(act==='token-clear'){localStorage.removeItem(SB_TOKEN_KEY);closeModal();toast('토큰을 삭제했어요');}
   else if(act==='modal-close')closeModal();
   else if(act==='sum-toggle'){selCard=(selCard===el.dataset.key?null:el.dataset.key);renderCards();}
   else if(act==='leg-toggle'){var m=sbMember(el.dataset.name);if(m){m.visible=!m.visible;sbSave();renderLegend();renderCal();}}
@@ -1531,7 +1638,13 @@ document.addEventListener('keydown',function(e){
 });
 
 /* ══════════════ 초기화 ══════════════ */
+// 팀 공유 도입 전 로컬 데이터(타임스탬프 없음)는 지금 시각으로 보존해 원격이 덮어쓰지 않게 함
+if(!sb.updatedAt&&!sb._seed&&(sb.projects.length||sb.tasks.length)){
+  sb.updatedAt=new Date().toISOString();sbStore();setSbDirty(true);
+}
 renderSbAll();
+syncStatus();
+sbRemoteLoad(false);
 </script>
 </body>
 </html>

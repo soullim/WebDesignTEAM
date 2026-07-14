@@ -1,0 +1,13 @@
+{
+ "members": [
+  {"name":"김수영","nick":"soo","emoji":"🙈","role":"Designer","c1":"#FFB02E","c2":"#FF7A00","active":true,"visible":true},
+  {"name":"김미리","nick":"havefunlife","emoji":"🧸","role":"Designer","c1":"#35E0A1","c2":"#00BFCB","active":true,"visible":true},
+  {"name":"문효진","nick":"vava","emoji":"🐭","role":"Designer","c1":"#E07BF7","c2":"#B23BE0","active":true,"visible":true},
+  {"name":"유서원","nick":"lina","emoji":"🦁","role":"Designer","c1":"#B5E03A","c2":"#2FBF55","active":false,"visible":false},
+  {"name":"양동준","nick":"dongjun","emoji":"🐨","role":"Publisher","c1":"#56A4FF","c2":"#8B5CF6","active":true,"visible":true}
+ ],
+ "projects": [],
+ "tasks": [],
+ "ui": {"solo": true},
+ "updatedAt": "2026-07-14T00:00:00.000Z"
+}
