@@ -1073,7 +1073,10 @@ function renderSbAll(){renderLegend();renderCards();renderSbTimeline();renderCal
 /* ══════════════ 모달 ══════════════ */
 function openModal(html){$('#sb-mbox').innerHTML=html;$('#sb-overlay').classList.add('on');}
 function closeModal(){$('#sb-overlay').classList.remove('on');$('#sb-mbox').innerHTML='';}
-function sbOverlayClick(e){if(e.target.id==='sb-overlay')closeModal();}
+/* 모달 안에서 드래그하다 오버레이에서 마우스를 떼도 닫히지 않도록,
+   마우스를 누른 시작점과 뗀 지점이 모두 오버레이일 때만 닫는다 */
+var sbDownOnOverlay=false;
+function sbOverlayClick(e){if(e.target.id==='sb-overlay'&&sbDownOnOverlay)closeModal();}
 function memList(){return '<datalist id="memList">'+sb.members.map(function(m){return '<option value="'+esc(m.name)+'">';}).join('')+'</datalist>';}
 function bizSelHtml(id,val){return '<select id="'+id+'" class="fi">'+BIZ.map(function(b){return '<option '+(b===val?'selected':'')+'>'+b+'</option>';}).join('')+'</select>';}
 function phaseRowHtml(ph){
@@ -1469,6 +1472,8 @@ document.addEventListener('click',function(e){
 });
 $('#sbSoloChk').addEventListener('change',function(){sb.ui.solo=this.checked;sbSave();renderSbTimeline();});
 $('#sbImportFile').addEventListener('change',function(){if(this.files[0])importSbJson(this.files[0]);this.value='';});
+document.getElementById('sb-overlay').addEventListener('mousedown',function(e){sbDownOnOverlay=(e.target.id==='sb-overlay');});
+document.getElementById('kwmovl').addEventListener('mousedown',function(e){kwDownOnOvl=(e.target===document.getElementById('kwmovl'));});
 
 /* ══════════════ 지식지갑 ══════════════ */
 var KW_LABEL={figma:'피그마 신기능',adobe:'어도비 신기능',ai:'🤖 AI 뉴스',industry:'업계동향',design:'디자인',trend:'트렌드',frontend:'프론트엔드'};
@@ -1607,7 +1612,8 @@ function kwOpen(idx){
   document.getElementById('kwmovl').classList.add('on');
   document.body.style.overflow='hidden';
 }
-function kwMClose(e){ if(e.target===document.getElementById('kwmovl')) kwMDismiss(); }
+var kwDownOnOvl=false;
+function kwMClose(e){ if(e.target===document.getElementById('kwmovl')&&kwDownOnOvl) kwMDismiss(); }
 function kwMDismiss(){ document.getElementById('kwmovl').classList.remove('on'); document.body.style.overflow=''; }
 function kwCopy(){
   navigator.clipboard.writeText(window._kwUrl||location.href).then(function(){
