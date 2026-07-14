@@ -1281,6 +1281,9 @@ function importSbJson(file){
 /* ══════════════ 팀 공유 (GitHub 저장소 동기화) ══════════════
    저장소의 board-data.json을 팀 공유 데이터로 사용.
    읽기는 공개 API라 토큰 없이 동작, 쓰기(팀 공유)만 GitHub 토큰 필요. */
+/* Google Apps Script 웹 앱 URL — team-sync-apps-script.gs 배포 후 발급된 /exec URL을 입력.
+   비어 있으면 예전 GitHub(board-data.json + 토큰) 방식으로 동작한다. */
+var SB_GAS_URL='';
 var SB_REPO='soullim/WebDesignTEAM', SB_DATA='board-data.json', SB_BRANCH='main';
 var SB_TOKEN_KEY='wdsb_gh_token', SB_DIRTY_KEY='wdsb_dirty';
 function ghToken(){return localStorage.getItem(SB_TOKEN_KEY)||'';}
@@ -1296,11 +1299,19 @@ function syncStatus(msg,cls){
 }
 async function sbRemoteLoad(manual){
   try{
-    var r=await fetch('https://api.github.com/repos/'+SB_REPO+'/contents/'+SB_DATA+'?ref='+SB_BRANCH,
-      {cache:'no-store',headers:{Accept:'application/vnd.github.raw+json'}});
-    if(!r.ok)throw new Error('HTTP '+r.status);
-    var remote=await r.json();
-    if(!remote||!remote.members)throw new Error('데이터 형식 오류');
+    var remote;
+    if(SB_GAS_URL){
+      var g=await fetch(SB_GAS_URL+'?t='+Date.now(),{redirect:'follow'});
+      if(!g.ok)throw new Error('HTTP '+g.status);
+      remote=await g.json();
+      if(!remote||!remote.members){if(manual)toast('아직 공유된 팀 데이터가 없어요');syncStatus();return;}
+    }else{
+      var r=await fetch('https://api.github.com/repos/'+SB_REPO+'/contents/'+SB_DATA+'?ref='+SB_BRANCH,
+        {cache:'no-store',headers:{Accept:'application/vnd.github.raw+json'}});
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      remote=await r.json();
+      if(!remote||!remote.members)throw new Error('데이터 형식 오류');
+    }
     if((remote.updatedAt||'')>(sb.updatedAt||'')){
       if(sbDirty()&&!confirm('다른 PC에서 업데이트된 팀 데이터가 있어요.\n아직 공유하지 않은 내 변경사항을 버리고 팀 데이터를 불러올까요?')){syncStatus();return;}
       sb=remote;sbStore();setSbDirty(false);renderSbAll();
@@ -1316,6 +1327,7 @@ async function sbRemoteLoad(manual){
   }
 }
 async function sbRemotePush(){
+  if(SB_GAS_URL)return sbGasPush();
   var tk=ghToken();
   if(!tk){openTokenModal();return;}
   syncStatus('팀 공유 중...','');
@@ -1350,6 +1362,32 @@ async function sbRemotePush(){
     toast('공유 실패 — '+e.message);
   }
 }
+async function sbGasPush(){
+  syncStatus('팀 공유 중...','');
+  try{
+    // 다른 PC에서 더 최신 데이터를 올렸는지 먼저 확인
+    var remoteStamp='';
+    try{
+      var r0=await fetch(SB_GAS_URL+'?t='+Date.now(),{redirect:'follow'});
+      if(r0.ok){var cur=await r0.json();remoteStamp=(cur&&cur.updatedAt)||'';}
+    }catch(e0){}
+    if(remoteStamp&&remoteStamp>(sb.updatedAt||'')){
+      if(!confirm('다른 PC에서 더 최신 데이터가 공유되어 있어요.\n내 데이터로 덮어쓸까요? (취소 후 [팀 데이터 불러오기]로 확인 가능)')){syncStatus();return;}
+    }
+    delete sb._seed;
+    sb.updatedAt=new Date().toISOString();
+    var r=await fetch(SB_GAS_URL,{method:'POST',redirect:'follow',body:JSON.stringify(sb)});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    var res=await r.json();
+    if(!res||!res.ok)throw new Error((res&&res.error)||'저장 실패');
+    sbStore();setSbDirty(false);
+    syncStatus('팀 공유됨 · '+fmtStamp(sb.updatedAt),'ok');
+    toast('팀 시트에 공유했어요');
+  }catch(e){
+    syncStatus('공유 실패 — '+e.message,'err');
+    toast('공유 실패 — '+e.message);
+  }
+}
 function openTokenModal(){
   openModal('<h3 class="mtitle">팀 공유 설정</h3>'
     +'<p class="m-sub">일정 데이터를 깃허브 저장소(board-data.json)에 저장해 다른 PC와 공유합니다.<br>불러오기는 토큰 없이 자동으로 되고, <b>공유(쓰기)할 때만</b> GitHub 토큰이 필요해요.</p>'
@@ -1377,7 +1415,12 @@ document.addEventListener('click',function(e){
   else if(act==='import')$('#sbImportFile').click();
   else if(act==='share-push')sbRemotePush();
   else if(act==='share-pull')sbRemoteLoad(true);
-  else if(act==='share-settings')openTokenModal();
+  else if(act==='share-settings'){
+    if(SB_GAS_URL)openModal('<h3 class="mtitle">팀 공유 설정</h3>'
+      +'<p class="m-sub">구글 시트(Apps Script) 방식으로 동기화 중이에요.<br>토큰이나 별도 설정 없이 어떤 PC에서든 [팀 공유]·[팀 데이터 불러오기]를 바로 쓸 수 있어요.</p>'
+      +'<div class="factions"><button class="btn pri" data-act="modal-close">확인</button></div>');
+    else openTokenModal();
+  }
   else if(act==='token-save'){
     var tv=$('#ghTk').value.trim();
     if(!tv){toast('토큰을 입력해 주세요');return;}
