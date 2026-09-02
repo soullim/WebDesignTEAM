@@ -1,0 +1,42 @@
+name: 주간보고 데이터 동기화
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 구글 Apps Script에서 주간보고 데이터 가져오기
+        env:
+          WR_GAS_URL: ${{ vars.WR_GAS_URL }}
+        run: |
+          if [ -z "$WR_GAS_URL" ]; then
+            echo "저장소 변수 WR_GAS_URL이 설정되어 있지 않아요. (Settings > Secrets and variables > Actions > Variables)"
+            exit 1
+          fi
+          curl -sSL --max-time 60 "$WR_GAS_URL" -o wr-data.json.tmp
+
+          if [ -s wr-data.json.tmp ] && grep -q '"ok"[[:space:]]*:[[:space:]]*true' wr-data.json.tmp; then
+            mv wr-data.json.tmp wr-data.json
+            echo "정상적으로 받아왔어요."
+          else
+            echo "응답이 비어있거나 형식이 이상해서 기존 파일을 그대로 둡니다."
+            cat wr-data.json.tmp || true
+            rm -f wr-data.json.tmp
+          fi
+
+      - name: 변경사항 커밋
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add wr-data.json
+          git diff --cached --quiet || git commit -m "chore: 주간보고 데이터 자동 동기화"
+          git push
