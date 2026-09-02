@@ -22,7 +22,7 @@ jobs:
             echo "저장소 변수 WR_GAS_URL이 설정되어 있지 않아요. (Settings > Secrets and variables > Actions > Variables)"
             exit 1
           fi
-          curl -sSL --max-time 60 "$WR_GAS_URL" -o wr-data.json.tmp
+          curl -sSL --max-time 280 "$WR_GAS_URL" -o wr-data.json.tmp
 
           if [ -s wr-data.json.tmp ] && grep -q '"ok"[[:space:]]*:[[:space:]]*true' wr-data.json.tmp; then
             mv wr-data.json.tmp wr-data.json
