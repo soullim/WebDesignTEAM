@@ -1636,8 +1636,9 @@ async function wrLoad(manual){
 }
 function wrProjOptions(){
   var live=sb.projects.filter(function(p){return !p.done;});
-  if(!live.length)return '<option value="">등록된 타임라인이 없어요</option>';
-  return '<option value="">반영할 타임라인 선택…</option>'+live.map(function(p){return '<option value="'+p.id+'">'+esc(p.title)+'</option>';}).join('');
+  var head='<option value="">반영할 타임라인 선택…</option><option value="__new__">➕ 새 타임라인으로 추가</option>';
+  if(!live.length)return head;
+  return head+live.map(function(p){return '<option value="'+p.id+'">'+esc(p.title)+'</option>';}).join('');
 }
 function wrRowHtml(it){
   var key=wrKey(it);
@@ -1723,15 +1724,23 @@ document.addEventListener('click',function(e){
     var row=el.closest('.pn-row');
     var pid=row.querySelector('.wr-proj').value;
     if(!pid){toast('반영할 타임라인을 먼저 선택해 주세요');return;}
-    var proj=findProject(pid);
     var wit=wrItems.filter(function(x){return wrKey(x)===el.dataset.key;})[0];
-    if(!proj||!wit)return;
-    if(wit.kind==='오픈'){proj.open=wit.date;toast('오픈일을 반영했어요');}
+    if(!wit)return;
+    var proj, isNew=false;
+    if(pid==='__new__'){
+      proj={id:uid('p'),title:wit.title||(wit.team+' '+wit.kind+' 일정'),biz:'',open:'',inspect:'',phases:[],reviews:[],done:false,reopen:false,issues:[]};
+      isNew=true;
+    }else{
+      proj=findProject(pid);
+    }
+    if(!proj)return;
+    if(wit.kind==='오픈'){proj.open=wit.date;toast(isNew?'새 타임라인을 만들고 오픈일을 반영했어요':'오픈일을 반영했어요');}
     else if(wit.kind==='리뷰'){
       proj.reviews=proj.reviews||[];
       proj.reviews.push({id:uid('r'),title:wit.title||'리뷰 일정',date:wit.date,time:'',location:'',url:''});
-      toast('리뷰 일정을 반영했어요');
+      toast(isNew?'새 타임라인을 만들고 리뷰 일정을 반영했어요':'리뷰 일정을 반영했어요');
     }
+    if(isNew)sb.projects.push(proj);
     wrSeenMap()[el.dataset.key]=1;
     sbSave();renderSbAll();
   }
