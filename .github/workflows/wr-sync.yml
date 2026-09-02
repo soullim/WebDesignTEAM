@@ -2,8 +2,11 @@ name: 주간보고 데이터 동기화
 
 on:
   schedule:
-    - cron: '*/30 * * * *'
-  workflow_dispatch: {}
+    # 매주 화요일 오전 11시(한국시간) 실행. 시트가 화요일 오전 10시에 최종본으로
+    # 확정된다고 해서, 그보다 1시간 뒤로 여유를 뒀어요.
+    # 크론은 UTC 기준이라 한국시간(UTC+9) 11시 = UTC 02시로 적었어요.
+    - cron: '0 2 * * 2'   # 매주 화요일 02:00 UTC = 11:00 KST (깃허브 사정으로 몇 분 늦어질 수 있음)
+  workflow_dispatch: {}       # 저장소 Actions 탭에서 수동으로도 실행 가능
 
 permissions:
   contents: write
