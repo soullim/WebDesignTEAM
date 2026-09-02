@@ -981,7 +981,9 @@ function renderPanel(opens,hos,going,iss,revs,rmw,wrp){
   if(selCard==='wreport'){
     html='<div class="pn-sub" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">'
       +'<span>주간보고 시트에서 찾은 리뷰·오픈일 후보예요. 확인 후 타임라인을 골라 [반영]을 누르거나, 필요 없으면 [무시]하세요.</span>'
-      +'<button class="icbtn" data-act="wr-refresh">↻ 새로고침</button></div>'
+      +'<span style="display:flex;gap:6px">'
+      +'<button class="icbtn" data-act="wr-unhide" title="이전에 [무시]한 항목도 다시 보여줘요">숨긴 항목 다시 보기</button>'
+      +'<button class="icbtn" data-act="wr-refresh">↻ 새로고침</button></span></div>'
       +(wrp&&wrp.length?wrp.map(wrRowHtml).join(''):'<div class="pn-empty">새로 찾은 리뷰·오픈일이 없습니다.</div>');
   }
   if(selCard==='rmwait'){
@@ -1717,6 +1719,10 @@ document.addEventListener('click',function(e){
   else if(act==='modal-close')closeModal();
   else if(act==='sum-toggle'){selCard=(selCard===el.dataset.key?null:el.dataset.key);renderCards();}
   else if(act==='wr-refresh'){wrLoad(true);}
+  else if(act==='wr-unhide'){
+    sb.wrSeen={};sbSave();renderCards();
+    toast('숨겨뒀던 항목을 다시 보여드려요');
+  }
   else if(act==='wr-dismiss'){
     wrSeenMap()[el.dataset.key]=1;sbStore();renderCards();
   }
