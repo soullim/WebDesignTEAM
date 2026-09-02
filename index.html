@@ -958,7 +958,7 @@ function renderCards(){
     {key:'review',label:'리뷰·피드백 일정',n:revs.length,warn:false},
     {key:'issue',label:'미해결 이슈',n:iss.length,warn:false}
   ];
-  if(WR_GAS_URL||wrLoaded)defs.push({key:'wreport',label:'주간보고 신규',n:wrp.length,warn:wrp.length>0});
+  if(wrLoaded)defs.push({key:'wreport',label:'주간보고 신규',n:wrp.length,warn:wrp.length>0});
   $('#sbCards').innerHTML=defs.map(function(d){
     var cls='kpi'+(selCard===d.key?' sel':'');
     var chev=selCard===d.key?'▴':'▾';
@@ -1606,10 +1606,13 @@ function openTokenModal(){
   $('#ghTk').focus();
 }
 
-/* ══════════════ 주간보고 연동 (Apps Script) ══════════════
-   IT부문 주간업무 보고 시트의 리뷰일·오픈일 후보를 서버(GAS)에서 읽어와 보여준다.
+/* ══════════════ 주간보고 연동 ══════════════
+   IT부문 주간업무 보고 시트의 리뷰일·오픈일 후보를, 깃허브 액션이 주기적으로
+   Apps Script에서 대신 읽어와 이 저장소의 wr-data.json 파일로 저장해둔다.
+   (회사 네트워크가 구글 스크립트 응답 도메인을 막아두는 경우가 있어, 브라우저가
+    직접 구글에 접속하지 않고 같은 깃허브 페이지에 있는 정적 파일만 읽도록 함.)
    실제 반영은 항상 사람이 확인 버튼을 눌러야만 일어난다 — 자동 매칭·자동 저장은 하지 않음. */
-var WR_GAS_URL='';
+var WR_DATA_URL='wr-data.json';
 var wrItems=[],wrLoaded=false;
 function wrKey(it){return [it.team,it.week,it.date,it.kind,it.raw.slice(0,60)].join('|');}
 function wrSeenMap(){sb.wrSeen=sb.wrSeen||{};return sb.wrSeen;}
@@ -1619,9 +1622,8 @@ function listWrPending(){
     .sort(function(a,b){return a.date<b.date?-1:1;});
 }
 async function wrLoad(manual){
-  if(!WR_GAS_URL){if(manual)toast('주간보고 연동 주소가 아직 설정되지 않았어요');return;}
   try{
-    var r=await fetch(WR_GAS_URL+'?t='+Date.now(),{redirect:'follow'});
+    var r=await fetch(WR_DATA_URL+'?t='+Date.now());
     if(!r.ok)throw new Error('HTTP '+r.status);
     var j=await r.json();
     if(!j||!j.ok)throw new Error((j&&j.error)||'응답 오류');
