@@ -22,7 +22,9 @@ jobs:
             echo "저장소 변수 WR_GAS_URL이 설정되어 있지 않아요. (Settings > Secrets and variables > Actions > Variables)"
             exit 1
           fi
-          curl -sSL --max-time 280 "$WR_GAS_URL" -o wr-data.json.tmp
+                    # 뒤에 매번 바뀌는 값(t=...)을 붙여서, 구글 쪽이 이전 응답을 캐시해서 그대로 돌려주는 것을 방지
+          SEP="?"; case "$WR_GAS_URL" in *\?*) SEP="&";; esac
+          curl -sSL --max-time 280 -H "Cache-Control: no-cache" "${WR_GAS_URL}${SEP}t=$(date +%s)" -o wr-data.json.tmp
 
           if [ -s wr-data.json.tmp ] && grep -q '"ok"[[:space:]]*:[[:space:]]*true' wr-data.json.tmp; then
             mv wr-data.json.tmp wr-data.json
