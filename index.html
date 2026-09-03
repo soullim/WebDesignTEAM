@@ -87,7 +87,7 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
 .mpill .mp-tag{font-size:9.5px;font-weight:600;border:1px solid rgba(255,255,255,.7);border-radius:20px;padding:0 6px;margin-left:2px}
 
 /* 요약 카드 */
-.kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:1.25rem}
+.kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:1.25rem}
 .kpi{background:var(--white);border:1px solid var(--border);border-radius:10px;padding:14px 16px;cursor:pointer;text-align:left;width:100%;font-family:var(--font);transition:border-color .15s}
 .kpi.sel{border-color:var(--accent)}
 .kpi-lbl{font-size:14px;color:var(--text3);margin-bottom:4px}
@@ -216,8 +216,12 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
 .phrow{display:grid;grid-template-columns:80px 1fr 1fr 84px 88px 28px;gap:6px;align-items:center}
 .phrow input{padding:6px 8px;font-size:12.5px;border:1px solid var(--border2);border-radius:8px;background:var(--white);color:var(--text);font-family:var(--font)}
 .ph-c{margin-top:4px}
-.revrow{display:grid;grid-template-columns:1.3fr 118px 96px 1fr 28px;gap:6px;margin-top:6px;align-items:center}
+.revrow{display:grid;grid-template-columns:1.1fr 112px 84px 0.9fr 0.9fr 28px;gap:6px;margin-top:6px;align-items:center}
 .revrow input{padding:6px 8px;font-size:12.5px;border:1px solid var(--border2);border-radius:8px;background:var(--white);color:var(--text);font-family:var(--font)}
+.rvckhead,.rvckrow{display:grid;grid-template-columns:minmax(120px,1fr) 108px 88px 100px 130px 26px;gap:6px;align-items:center}
+.rvckhead{margin:10px 0 4px}
+.rvckhead span{font-size:11px;color:var(--text3);font-weight:600;padding-left:2px}
+.rvckblock{margin-bottom:10px;padding-bottom:8px;border-bottom:1px dashed var(--border2)}
 .ph-head{font-size:12px;color:var(--text3);font-weight:600;margin-top:12px}
 .fsec{font-size:13px;font-weight:700;color:var(--text2);margin:16px 0 10px;padding-bottom:5px;border-bottom:1px solid var(--border)}
 .factions{display:flex;gap:8px;justify-content:flex-end;margin-top:1.25rem;padding-top:1.25rem;border-top:1px solid var(--border)}
@@ -352,7 +356,6 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
     </div>
     <div class="hbtns">
       <button class="btn pri" data-act="open-check"><i class="ti ti-clipboard-check"></i> 일정체크 붙여넣기</button>
-      <button class="btn tl" data-act="open-mail"><i class="ti ti-mail"></i> 메일 붙여넣기</button>
       <button class="btn tl" data-act="open-rm"><i class="ti ti-bug"></i> 레드마인 붙여넣기</button>
       <button class="btn" data-act="add-manual"><i class="ti ti-plus"></i> 직접 추가</button>
       <button class="btn" data-act="share-push"><i class="ti ti-cloud-upload"></i> 팀 공유</button>
@@ -863,6 +866,66 @@ function parseCheck(txt){
   });
   return items;
 }
+/* 리뷰·회의 일정 공지 텍스트 인식 — "일시:"/"시간:" 줄을 기준(anchor)으로 삼아
+   앞으로는 제목을, 뒤로는 장소·참석자를 찾는다. <태그:담당자> 묶음 표시가 없는
+   순수 회의 공지 형태라 parseCheck와는 다른 전용 인식기를 둔다. */
+var RV_ANCHOR_RE=/^[-*·•]?\s*(일시|시간)\s*[:：]\s*(.+)$/;
+var RV_LOC_RE=/^[-*·•]?\s*장소\s*[:：]\s*(.+)$/;
+var RV_ATTEND_RE=/^[-*·•]?\s*(참석자|참석\s*요청자|담당자)\s*[:：]\s*(.+)$/;
+var RV_LABEL_RE=/^[-*·•]?\s*(일시|시간|장소|참석자|참석\s*요청자|담당자)\s*[:：]/;
+var RV_BRACKET_RE=/^[\[〈(【][^\]〉)】]*[\]〉)】]$/;
+var RV_REJECT_TITLE_RE=/니다\.?\s*$/; // "…확정하고자 합니다." 같은 문장은 제목 후보에서 제외
+function extractReviewDate(s){
+  var m=s.match(/(\d{4})\s*[.\-]\s*(\d{1,2})\s*[.\-]\s*(\d{1,2})/);
+  if(m){var y=+m[1],mo=+m[2],d=+m[3];if(mo>=1&&mo<=12&&d>=1&&d<=31)return y+'-'+pad(mo)+'-'+pad(d);}
+  m=s.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+  if(m){var mo2=+m[1],d2=+m[2];if(mo2>=1&&mo2<=12&&d2>=1&&d2<=31)return inferDate(mo2,d2);}
+  m=s.match(/(\d{1,2})\s*[\/.]\s*(\d{1,2})(?!\d)/);
+  if(m){var mo3=+m[1],d3=+m[2];if(mo3>=1&&mo3<=12&&d3>=1&&d3<=31)return inferDate(mo3,d3);}
+  return '';
+}
+function extractReviewTime(s){
+  var m=s.match(/(오전|오후)\s*(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분)?/);
+  if(m)return m[1]+' '+m[2]+'시'+(m[3]?' '+m[3]+'분':'');
+  m=s.match(/\b(\d{1,2}):(\d{2})\b/);
+  if(m)return m[1]+':'+m[2];
+  return '';
+}
+function reviewTitleBackward(lines,idx){
+  for(var i=idx-1,steps=0;i>=0&&steps<6;i--,steps++){
+    var l=lines[i];
+    if(!l)continue;
+    if(RV_BRACKET_RE.test(l))continue;
+    if(RV_LABEL_RE.test(l))return '';
+    if(RV_REJECT_TITLE_RE.test(l))return '';
+    return l.replace(/^\[[^\]]*\]\s*/,'').trim();
+  }
+  return '';
+}
+function parseReviewMeetings(txt){
+  var lines=txt.split(/\r?\n/).map(function(l){return l.trim();});
+  var out=[];
+  for(var i=0;i<lines.length;i++){
+    var m=lines[i].match(RV_ANCHOR_RE);
+    if(!m)continue;
+    var content=m[2];
+    var date=extractReviewDate(content),time=extractReviewTime(content);
+    var loc='',attendees='';
+    for(var j=i+1;j<lines.length&&j<i+8;j++){
+      var lj=lines[j];
+      if(!lj)continue;
+      if(RV_ANCHOR_RE.test(lj))break;
+      if(!loc){var lm=lj.match(RV_LOC_RE);if(lm){loc=lm[1].trim();continue;}}
+      if(!attendees){var am=lj.match(RV_ATTEND_RE);if(am){attendees=am[2].split(/[,，、]/).map(function(s){return s.trim();}).filter(Boolean).join(', ');continue;}}
+      if(loc&&attendees)break;
+    }
+    var title=reviewTitleBackward(lines,i);
+    if(date||time||loc||attendees||title){
+      out.push({title:title,date:date,time:time,location:loc,attendees:attendees});
+    }
+  }
+  return out;
+}
 function normT(t){return String(t).replace(/\[[^\]]*\]/g,'').replace(/[\s·\-–_]/g,'').toLowerCase();}
 function chainCandidates(title,excludeId){
   var n=normT(title);if(n.length<4)return [];
@@ -966,7 +1029,7 @@ function listReviews(){
   var rows=[];
   sb.projects.forEach(function(p){
     (p.reviews||[]).forEach(function(r){
-      rows.push({title:r.title,date:r.date,time:r.time,location:r.location,url:r.url,projectTitle:p.title,projectId:p.id});
+      rows.push({title:r.title,date:r.date,time:r.time,location:r.location,attendees:r.attendees,url:r.url,projectTitle:p.title,projectId:p.id});
     });
   });
   rows.sort(function(a,b){return (a.date||'9999')<(b.date||'9999')?-1:1;});
@@ -998,10 +1061,10 @@ var selCard=null;
 function renderCards(){
   var opens=listOpens(),hos=listHandoffsImminent(),going=listOngoing(),iss=listIssues(),revs=listReviewsUpcoming(),rmw=listRmWait(),wrp=listWrPending();
   var defs=[
-    {key:'open',label:'이번 주 오픈·검수',n:opens.length,warn:false},
-    {key:'handoff',label:'핸드오프 임박',n:hos.length,warn:hos.length>0},
     {key:'going',label:'진행 중',n:going.length,warn:false},
     {key:'rmwait',label:'레드마인 미등록',n:rmw.length,warn:rmw.length>0},
+    {key:'handoff',label:'핸드오프 임박',n:hos.length,warn:hos.length>0},
+    {key:'open',label:'이번 주 오픈·검수',n:opens.length,warn:false},
     {key:'review',label:'리뷰·피드백 일정',n:revs.length,warn:false},
     {key:'issue',label:'미해결 이슈',n:iss.length,warn:false}
   ];
@@ -1026,7 +1089,7 @@ function renderPanel(opens,hos,going,iss,revs,rmw,wrp){
   if(!selCard){p.hidden=true;p.innerHTML='';return;}
   var html='';
   if(selCard==='wreport'){
-    html='<div class="pn-sub" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">'
+    html='<div class="pn-sub" style="padding:14px 16px 10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">'
       +'<span>주간보고 시트에서 찾은 리뷰·오픈일 후보예요. 확인 후 타임라인을 골라 [반영]을 누르거나, 필요 없으면 [무시]하세요.</span>'
       +'<span style="display:flex;gap:6px">'
       +'<button class="icbtn" data-act="wr-unhide" title="이전에 [무시]한 항목도 다시 보여줘요">숨긴 항목 다시 보기</button>'
@@ -1063,7 +1126,7 @@ function renderPanel(opens,hos,going,iss,revs,rmw,wrp){
     html=revs&&revs.length?revs.map(function(r){
       var meta=[r.time,r.location].filter(Boolean).join(' · ');
       var link=r.url?' <a href="'+esc(r.url)+'" target="_blank" rel="noopener">문서 ↗</a>':'';
-      return '<div class="pn-row"><span class="pn-title">'+esc(r.title)+link+'</span><span class="kchip">'+esc(r.projectTitle)+'</span>'+(r.date?dBadge(r.date):'')+(meta?'<span class="pn-sub">'+esc(meta)+'</span>':'')+'</div>';
+      return '<div class="pn-row"><span class="pn-title">'+esc(r.title)+link+'</span><span class="kchip">'+esc(r.projectTitle)+'</span>'+(r.date?dBadge(r.date):'')+(meta?'<span class="pn-sub">'+esc(meta)+'</span>':'')+(r.attendees?'<span class="pn-sub">참석 '+esc(r.attendees)+'</span>':'')+'</div>';
     }).join(''):'<div class="pn-empty">예정된 리뷰·피드백 일정이 없습니다.</div>';
   }
   p.innerHTML=html;p.hidden=false;
@@ -1322,12 +1385,13 @@ function phaseRowHtml(ph){
     +'</div>';
 }
 function reviewRowHtml(rv){
-  rv=rv||{title:'',date:'',time:'',location:'',url:''};
+  rv=rv||{title:'',date:'',time:'',location:'',attendees:'',url:''};
   return '<div class="revrow" data-url="'+esc(rv.url||'')+'">'
     +'<input class="rv-title" value="'+esc(rv.title)+'" placeholder="리뷰/피드백 제목">'
     +'<input type="date" class="rv-date" value="'+esc(rv.date||'')+'">'
     +'<input class="rv-time" value="'+esc(rv.time||'')+'" placeholder="시간(선택)">'
     +'<input class="rv-loc" value="'+esc(rv.location||'')+'" placeholder="장소(선택)">'
+    +'<input class="rv-attend" value="'+esc(rv.attendees||'')+'" placeholder="참석자(선택)">'
     +'<button class="icbtn" data-act="rv-del" title="리뷰 삭제">✕</button></div>';
 }
 function readReviewRows(){
@@ -1337,7 +1401,8 @@ function readReviewRows(){
     var date=r.querySelector('.rv-date').value;
     var time=r.querySelector('.rv-time').value.trim();
     var loc=r.querySelector('.rv-loc').value.trim();
-    if(title||date)out.push({id:uid('r'),title:title||'리뷰 일정',date:date,time:time,location:loc,url:r.dataset.url||''});
+    var attend=r.querySelector('.rv-attend').value.trim();
+    if(title||date)out.push({id:uid('r'),title:title||'리뷰 일정',date:date,time:time,location:loc,attendees:attend,url:r.dataset.url||''});
   });
   return out;
 }
@@ -1383,7 +1448,7 @@ function openRmModal(){
   $('#rmTxt').focus();
 }
 function openCheckModal(){
-  openModal('<h3 class="mtitle">일정체크 붙여넣기</h3><p class="m-sub">실무자 일정 체크 텍스트를 그대로 붙여넣으면 담당자별 업무로 등록됩니다. 레드마인 번호는 나중에 채워도 돼요.</p>'
+  openModal('<h3 class="mtitle">일정체크 붙여넣기</h3><p class="m-sub">실무자 일정 체크 텍스트를 그대로 붙여넣으면 담당자별 업무로 등록됩니다. 레드마인 번호는 나중에 채워도 돼요. 리뷰·회의 일정 공지 문구를 붙여넣으면 자동으로 알아보고 리뷰 일정으로 등록해요.</p>'
     +'<textarea id="checkTxt" class="fi" style="min-height:170px" placeholder="&lt;디자인:문효진&gt;&#10;- 1차&#10;기존UI변경작업:~9/9&#10;- 2차&#10;신규UI : ~9/18&#10;====&#10;&lt;퍼블&gt;&#10;- 1차&#10;기존UI변경 및 내재화:~9/18&#10;- 2차&#10;신규UI : ~10/8"></textarea>'
     +'<div class="factions"><button class="btn" data-act="modal-close">닫기</button><button class="btn pri" data-act="parse-check">분석하기</button></div>');
   $('#checkTxt').focus();
@@ -1407,6 +1472,31 @@ function checkPreview(items){
     +'<div id="chkRows">'+rows+'</div>'
     +'<button class="icbtn" data-act="ck-add" style="margin-top:6px">+ 줄 추가</button>'
     +'<div class="factions"><button class="btn" data-act="modal-close">닫기</button><button class="btn pri" data-act="save-check">모두 등록</button></div>');
+}
+/* 리뷰·회의 일정 공지를 붙여넣었을 때의 확인 화면 — 업무가 아니라 리뷰 일정이라
+   어느 타임라인에 붙일지(또는 새 타임라인으로 만들지) 줄마다 골라야 해서
+   레드마인 여러 건 확인 화면과 비슷하게 만들되, 연결 대상을 프로젝트로 둔다. */
+function reviewCheckRowHtml(it){
+  it=it||{title:'',date:'',time:'',location:'',attendees:''};
+  var projOpts=wrProjOptions(it.title,true);
+  return '<div class="rvckblock">'
+    +'<div class="rvckrow">'
+    +'<input class="rvck-title fi" value="'+esc(it.title)+'" placeholder="리뷰/회의 제목">'
+    +'<input type="date" class="rvck-date fi" value="'+esc(it.date||'')+'">'
+    +'<input class="rvck-time fi" value="'+esc(it.time||'')+'" placeholder="시간(선택)">'
+    +'<input class="rvck-loc fi" value="'+esc(it.location||'')+'" placeholder="장소(선택)">'
+    +'<input class="rvck-attend fi" value="'+esc(it.attendees||'')+'" placeholder="참석자(선택)">'
+    +'<button class="icbtn" data-act="rvck-del" title="줄 삭제">✕</button></div>'
+    +'<div class="rb-chainline"><label>연결할 타임라인</label><select class="rvck-proj fi">'+projOpts+'</select></div>'
+    +'</div>';
+}
+function reviewCheckPreview(items){
+  var rows=(items.length?items:[null]).map(reviewCheckRowHtml).join('');
+  openModal('<h3 class="mtitle">리뷰 일정 확인</h3><p class="m-sub">읽어온 리뷰·회의 일정을 확인하고, 어느 타임라인의 리뷰인지 골라주세요 (새 타임라인으로도 추가할 수 있어요).</p>'
+    +'<div class="rvckhead"><span>제목</span><span>날짜</span><span>시간</span><span>장소</span><span>참석자</span><span></span></div>'
+    +'<div id="rvckRows">'+rows+'</div>'
+    +'<button class="icbtn" data-act="rvck-add" style="margin-top:6px">+ 줄 추가</button>'
+    +'<div class="factions"><button class="btn" data-act="modal-close">닫기</button><button class="btn pri" data-act="save-rvck">모두 등록</button></div>');
 }
 function chainSelHtml(cands,excludeId,currentChain,selAttrs){
   var opts='<option value="">연결 안 함</option>',seen={};
@@ -1497,7 +1587,7 @@ function detailModal(type,id){
     var revRows2=(p.reviews||[]).map(function(r){
       var meta=[r.time,r.location].filter(Boolean).join(' · ');
       var link=r.url?' <a href="'+esc(r.url)+'" target="_blank" rel="noopener">문서 ↗</a>':'';
-      return '<div class="dl-row"><b>리뷰</b><span>'+esc(r.title)+link+(r.date?' · '+fmtMD(r.date):'')+(meta?' · '+esc(meta):'')+'</span></div>';
+      return '<div class="dl-row"><b>리뷰</b><span>'+esc(r.title)+link+(r.date?' · '+fmtMD(r.date):'')+(meta?' · '+esc(meta):'')+(r.attendees?' · 참석 '+esc(r.attendees):'')+'</span></div>';
     }).join('');
     openModal('<h3 class="mtitle">'+esc(p.title)+'</h3><p class="m-sub">'+esc(p.biz)+(p.open?' · Open '+fmtMD(p.open):'')+(p.inspect?' · 검수 '+fmtMD(p.inspect):'')+'</p>'+rows+revRows2
       +'<div class="factions"><button class="btn" data-act="modal-close">닫기</button><button class="btn pri" data-act="edit" data-type="project" data-id="'+p.id+'">수정</button></div>');
@@ -1754,16 +1844,18 @@ function titleSimilarity(a,b){
   bb.forEach(function(x){if(count[x]>0){count[x]--;inter++;}});
   return 2*inter/(ba.length+bb.length); // Sørensen–Dice 계수
 }
-function wrProjOptions(refTitle){
+function wrProjOptions(refTitle,autoPick){
   var live=sb.projects.filter(function(p){return !p.done;});
   var head='<option value="">반영할 타임라인 선택…</option><option value="__new__">➕ 새 타임라인으로 추가</option>';
   if(!live.length)return head;
   var SIM_THRESH=0.28; // 이 이상이면 "제목이 꽤 비슷하다"고 보고 ⭐ 추천 표시
   var scored=live.map(function(p){return {p:p,score:titleSimilarity(refTitle||'',p.title)};});
   scored.sort(function(a,b){return b.score-a.score;});
+  var bestId=(autoPick&&scored.length&&scored[0].score>=SIM_THRESH)?scored[0].p.id:null;
   return head+scored.map(function(o){
     var star=o.score>=SIM_THRESH?'⭐ ':'';
-    return '<option value="'+o.p.id+'">'+star+esc(o.p.title)+'</option>';
+    var sel=(bestId===o.p.id)?' selected':'';
+    return '<option value="'+o.p.id+'"'+sel+'>'+star+esc(o.p.title)+'</option>';
   }).join('');
 }
 function wrKindLabel(it){
@@ -1800,9 +1892,42 @@ document.addEventListener('click',function(e){
   else if(act==='parse-check'){
     var ctxt=$('#checkTxt').value;
     if(!ctxt.trim()){toast('일정 체크 텍스트를 붙여넣어 주세요');return;}
-    var cItems=parseCheck(ctxt);
-    if(!cItems.length){toast('일정 형식을 찾지 못했어요. 직접 입력으로 이어갈게요');}
-    checkPreview(cItems);
+    var revItems=parseReviewMeetings(ctxt);
+    if(revItems.length){reviewCheckPreview(revItems);}
+    else{
+      var cItems=parseCheck(ctxt);
+      if(!cItems.length){toast('일정 형식을 찾지 못했어요. 직접 입력으로 이어갈게요');}
+      checkPreview(cItems);
+    }
+  }
+  else if(act==='rvck-add'){$('#rvckRows').insertAdjacentHTML('beforeend',reviewCheckRowHtml(null));}
+  else if(act==='rvck-del'){el.closest('.rvckblock').remove();}
+  else if(act==='save-rvck'){
+    var savedN=0,skippedN=0;
+    document.querySelectorAll('#rvckRows .rvckblock').forEach(function(b){
+      var title=b.querySelector('.rvck-title').value.trim();
+      var date=b.querySelector('.rvck-date').value;
+      var time=b.querySelector('.rvck-time').value.trim();
+      var loc=b.querySelector('.rvck-loc').value.trim();
+      var attend=b.querySelector('.rvck-attend').value.trim();
+      if(!title&&!date&&!time&&!loc&&!attend)return;
+      var pid=b.querySelector('.rvck-proj').value;
+      if(!pid){skippedN++;return;}
+      var proj;
+      if(pid==='__new__'){
+        proj={id:uid('p'),title:title||'리뷰 일정',biz:'',open:'',inspect:'',phases:[],reviews:[],done:false,reopen:false,issues:[]};
+        sb.projects.push(proj);
+      }else{
+        proj=findProject(pid);
+      }
+      if(!proj){skippedN++;return;}
+      proj.reviews=proj.reviews||[];
+      proj.reviews.push({id:uid('r'),title:title||'리뷰 일정',date:date,time:time,location:loc,attendees:attend,url:''});
+      savedN++;
+    });
+    if(!savedN){toast(skippedN?'타임라인을 먼저 선택해 주세요':'등록할 리뷰 일정이 없어요');return;}
+    sbSave();renderSbAll();closeModal();
+    toast(savedN+'건의 리뷰 일정을 등록했어요'+(skippedN?' (타임라인 미선택 '+skippedN+'건은 제외)':''));
   }
   else if(act==='ck-add'){$('#chkRows').insertAdjacentHTML('beforeend',checkRowHtml(null));}
   else if(act==='ck-del'){el.closest('.chkrow').remove();}
@@ -1876,7 +2001,7 @@ document.addEventListener('click',function(e){
     if(wit.kind==='오픈'){proj.open=wit.date;toast(isNew?'새 타임라인을 만들고 오픈일을 반영했어요':'오픈일을 반영했어요');}
     else if(wit.kind==='리뷰'){
       proj.reviews=proj.reviews||[];
-      proj.reviews.push({id:uid('r'),title:wit.title||'리뷰 일정',date:wit.date,time:'',location:'',url:''});
+      proj.reviews.push({id:uid('r'),title:wit.title||'리뷰 일정',date:wit.date,time:'',location:'',attendees:'',url:''});
       toast(isNew?'새 타임라인을 만들고 리뷰 일정을 반영했어요':'리뷰 일정을 반영했어요');
     }
     else if(wit.kind==='검수'){proj.inspect=wit.date;toast(isNew?'새 타임라인을 만들고 검수일을 반영했어요':'검수일을 반영했어요');}
