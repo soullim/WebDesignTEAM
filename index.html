@@ -1691,8 +1691,8 @@ function wrKindLabel(it){
 }
 function wrRowHtml(it){
   var key=wrKey(it);
-  var kindCls=it.kind==='오픈'?'open':(it.kind==='리뷰'?'inspect':'');
-  var canApply=(it.kind==='오픈'||it.kind==='리뷰');
+  var kindCls=it.kind==='오픈'?'open':((it.kind==='리뷰'||it.kind==='검수')?'inspect':'');
+  var canApply=(it.kind==='오픈'||it.kind==='리뷰'||it.kind==='검수');
   var applyCtl=canApply
     ? '<select class="fi wr-proj" style="max-width:180px;display:inline-block">'+wrProjOptions(it.title)+'</select><button class="icbtn" data-act="wr-apply" data-key="'+esc(key)+'">반영</button>'
     : '<span class="pn-sub" title="기획 완료(예정)일은 타임라인의 특정 필드에 반영할 곳이 없어 정보 확인용으로만 보여드려요">직접 반영할 항목은 아니에요</span>';
@@ -1700,6 +1700,7 @@ function wrRowHtml(it){
   return '<div class="pn-row" style="flex-wrap:wrap">'
     +'<span class="kchip">'+esc(it.team)+' · '+esc(it.week)+'</span>'
     +'<span class="dchip '+kindCls+'">'+esc(wrKindLabel(it))+'</span>'
+    +'<span class="kchip">'+esc(fmtMD(it.date))+'</span>'
     +dBadge(it.date)
     +'<div class="pn-title" style="flex-basis:100%;font-weight:400;color:var(--text2)" title="'+esc(it.raw)+'">'+esc(it.title)+'</div>'
     +'<div style="flex-basis:100%;display:flex;gap:6px;align-items:center;margin-top:2px">'+applyCtl+'<button class="icbtn" data-act="wr-dismiss" data-key="'+esc(key)+'" title="'+esc(dismissTitle)+'">무시</button></div>'
@@ -1795,6 +1796,7 @@ document.addEventListener('click',function(e){
       proj.reviews.push({id:uid('r'),title:wit.title||'리뷰 일정',date:wit.date,time:'',location:'',url:''});
       toast(isNew?'새 타임라인을 만들고 리뷰 일정을 반영했어요':'리뷰 일정을 반영했어요');
     }
+    else if(wit.kind==='검수'){proj.inspect=wit.date;toast(isNew?'새 타임라인을 만들고 검수일을 반영했어요':'검수일을 반영했어요');}
     if(isNew)sb.projects.push(proj);
     wrSeenMap()[el.dataset.key]=1;
     sbSave();renderSbAll();
