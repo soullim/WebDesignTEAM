@@ -119,6 +119,7 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
 .chip.solo{background:var(--bg2);border:1px solid var(--border2);color:var(--text3);font-weight:500}
 .chip.rmwait{background:var(--amber-soft);color:var(--amber);font-weight:700}
 .dchip.inspect{background:var(--blue-soft);color:var(--blue)}
+.dchip.review{background:var(--blue-soft);color:var(--blue)}
 .tl-acts{margin-left:auto;display:flex;gap:2px}
 .icbtn{font-size:12px;color:var(--text3);padding:4px 8px;border-radius:7px;border:none;background:none;font-family:var(--font);cursor:pointer}
 .icbtn:hover{background:var(--white);color:var(--text)}
@@ -185,6 +186,12 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
 .chkhead,.chkrow{display:grid;grid-template-columns:minmax(120px,1fr) 84px 94px 58px 122px 122px 26px;gap:6px;align-items:center}
 .chkhead{margin:10px 0 4px}
 .chkhead span{font-size:11px;color:var(--text3);font-weight:600;padding-left:2px}
+.rbhead,.rbrow{display:grid;grid-template-columns:70px minmax(140px,1fr) 84px 84px 122px 122px 26px;gap:6px;align-items:center}
+.rbhead{margin:10px 0 4px}
+.rbhead span{font-size:11px;color:var(--text3);font-weight:600;padding-left:2px}
+.rbblock{margin-bottom:10px;padding-bottom:8px;border-bottom:1px dashed var(--border2)}
+.rb-chainline{display:flex;gap:6px;align-items:center;margin-top:4px;font-size:12px;color:var(--text3)}
+.rb-chainline select{flex:1}
 .chkrow{margin-bottom:6px}
 .cal-empty{padding:26px;text-align:center;color:var(--text3);font-size:14px}
 
@@ -206,7 +213,7 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
 .fld input,.fld select{width:100%}
 .phblock{margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)}
 .phblock:first-child{margin-top:0;padding-top:0;border-top:none}
-.phrow{display:grid;grid-template-columns:86px 1fr 1fr 96px 28px;gap:6px;align-items:center}
+.phrow{display:grid;grid-template-columns:80px 1fr 1fr 84px 88px 28px;gap:6px;align-items:center}
 .phrow input{padding:6px 8px;font-size:12.5px;border:1px solid var(--border2);border-radius:8px;background:var(--white);color:var(--text);font-family:var(--font)}
 .ph-c{margin-top:4px}
 .revrow{display:grid;grid-template-columns:1.3fr 118px 96px 1fr 28px;gap:6px;margin-top:6px;align-items:center}
@@ -742,24 +749,64 @@ function parseMail(txt){
   res.biz=guessBiz(res.title+' '+txt);
   return res;
 }
+/* 레드마인 일감 페이지를 브라우저에서 직접 긁어(전체 복사) 붙여넣었을 때의 형태.
+   "신규 #21681 진행중" 처럼 종류·번호·상태가 첫 줄에 있고, 그 다음 줄은
+   "« 뒤로 | 3/4 | 다음 »" 같은 페이지 이동 줄, 그 다음이 실제 제목,
+   그 다음이 "OOO(가) N시간 전에 추가함…" 같은 작성 이력 줄이다. */
+function redmineHeaderLine(l){return /^(신규|지원|개선|버그|작업|피드백|기타)\s*#\d+\b/.test(l);}
+function guessTagFromText(s){
+  if(/디자인/.test(s))return '디자인';
+  if(/퍼블/.test(s))return '퍼블';
+  if(/기획/.test(s))return '기획';
+  if(/개발/.test(s))return '개발';
+  return '디자인'; // 대부분 디자인 단계 건이라 기본값으로 두고, 퍼블 등은 직접 고르면 됨
+}
+/* 한 번에 여러 건을 붙여넣었을 때(같은 형식의 헤더 줄이 여러 개) 건별로 잘라준다.
+   헤더 줄이 0~1개면 기존 방식(마크다운 링크 등)일 수 있으니 통짜 텍스트 그대로 하나로 취급한다. */
+function splitRedmineBlocks(txt){
+  var lines=txt.split(/\r?\n/);
+  var idxs=[];
+  lines.forEach(function(l,i){if(redmineHeaderLine(l.trim()))idxs.push(i);});
+  if(idxs.length<2)return [txt];
+  var blocks=[];
+  for(var k=0;k<idxs.length;k++){
+    var start=idxs[k],end=(k+1<idxs.length)?idxs[k+1]:lines.length;
+    blocks.push(lines.slice(start,end).join('\n'));
+  }
+  return blocks;
+}
 function parseRedmine(txt){
   var r={rm:'',url:'',title:'',tag:'기타',owner:'',start:'',end:'',status:'',prio:'',biz:''};
   var m=txt.match(/\[(.+)\]\((https?:\/\/[^\s)]+)\)/);
+  var lines=txt.split(/\r?\n/).map(function(s){return s.trim();});
+  var headerIdx=lines.findIndex(function(l){return redmineHeaderLine(l);});
   if(m){
     r.url=m[2].split('#')[0];
     var t=m[1].match(/#(\d+)\s*[:：]?\s*(.*)$/);
     if(t){r.rm=t[1];r.title=t[2].trim();}else{r.title=m[1];}
+  }else if(headerIdx>=0){
+    var hm=lines[headerIdx].match(/^(신규|지원|개선|버그|작업|피드백|기타)\s*#(\d+)\s*(\S*)/);
+    r.rm=hm[2];
+    if(hm[3])r.status=hm[3]; // "상태:" 라벨이 따로 있으면 아래에서 더 정확한 값으로 덮어씀
+    for(var i=headerIdx+1;i<lines.length;i++){
+      var l=lines[i];
+      if(!l)continue;
+      if(/^«/.test(l))continue; // 페이지 이동("« 뒤로 | 3/4 | 다음 »") 줄은 건너뜀
+      if(/\(가\)/.test(l)&&/(추가함|수정됨)/.test(l))continue; // 작성자·수정 이력 줄은 건너뜀
+      if(/^(상태|우선순위|담당자|시작시간|완료기한|진척도)\s*[:：]?\s*$/.test(l))break; // 상세 항목이 시작되면 중단
+      r.title=l;break;
+    }
   }else{
     var n=txt.match(/#(\d+)/);if(n)r.rm=n[1];
-    var first=txt.split(/\r?\n/).map(function(s){return s.trim();}).filter(Boolean)[0]||'';
+    var first=lines.filter(Boolean)[0]||'';
     r.title=first.replace(/^\[?(신규|진행|수정)?\s*#\d+\s*[:：]?\s*/,'').replace(/\]?\s*(진행중|진행|신규|완료)?\s*$/,'').trim();
   }
   var tg=r.title.match(/\[(디자인|퍼블|기획|개발)\]/);
-  if(tg)r.tag=tg[1];
+  if(tg)r.tag=tg[1];else r.tag=guessTagFromText(r.title);
   r.title=r.title.replace(/\[[^\]]*\]/g,'').trim();
   m=txt.match(/담당자\s*[:：]\s*(.+)/);if(m)r.owner=normName(m[1].split(/\r?\n/)[0]);
-  m=txt.match(/시작시간\s*[:：]\s*(\d{4}-\d{2}-\d{2})/);if(m)r.start=m[1];
-  m=txt.match(/완료기한\s*[:：]\s*(\d{4}-\d{2}-\d{2})/);if(m)r.end=m[1];
+  m=txt.match(/시작시간\s*[:：]\s*(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);if(m)r.start=m[1]+'-'+pad(+m[2])+'-'+pad(+m[3]);
+  m=txt.match(/완료기한\s*[:：]\s*(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);if(m)r.end=m[1]+'-'+pad(+m[2])+'-'+pad(+m[3]);
   m=txt.match(/상태\s*[:：]\s*(\S+)/);if(m)r.status=m[1];
   m=txt.match(/우선순위\s*[:：]\s*(\S+)/);if(m)r.prio=m[1];
   if(!r.url&&r.rm)r.url=RM_BASE+r.rm;
@@ -1064,8 +1111,10 @@ function projCard(p){
   var segs=p.phases.map(function(ph){
     var dur=Math.max(1,sbDiff(ph.start,ph.end)+1);
     var flex=Math.max(.8,dur/Math.max(total,1)*10);
-    var lab=ph.name+' '+fmtMD(ph.start)+(ph.end!==ph.start?'~'+fmtMD(ph.end):'')+(ph.owner?' · '+ownerDisp(ph.owner):'');
-    var tip=p.title+' · '+lab+(ph.content?' · '+ph.content:'');
+    var labPlain=ph.name+' '+fmtMD(ph.start)+(ph.end!==ph.start?'~'+fmtMD(ph.end):'')+(ph.owner?' · '+ownerDisp(ph.owner):'');
+    var rmTag=ph.rm?'<a href="'+esc(RM_BASE+ph.rm)+'" target="_blank" rel="noopener">#'+esc(ph.rm)+'</a> ':'';
+    var lab=rmTag+labPlain;
+    var tip=p.title+' · '+labPlain+(ph.rm?' · #'+ph.rm:'')+(ph.content?' · '+ph.content:'');
     return segHtml(phCls(ph.name),flex.toFixed(2),lab,tip);
   }).join('');
   var openChip='';
@@ -1078,12 +1127,15 @@ function projCard(p){
     openChip+='<span class="dchip inspect">검수 '+fmtMD(p.inspect)+(di>=0?' · D-'+di:' · 지남')+'</span>';
   }
   var reviews=p.reviews||[];
+  var reviewChips=reviews.slice().sort(function(a,b){return a.date<b.date?-1:1;}).map(function(rv){
+    var dr=sbDiff(tISO(),rv.date);
+    return '<span class="dchip review" title="'+esc(rv.title||'리뷰 일정')+'">리뷰 '+fmtMD(rv.date)+(dr>=0?' · D-'+dr:' · 지남')+'</span>';
+  }).join('');
   var hs=allHandoffs().filter(function(h){return h.ref.type==='project'&&h.ref.id===p.id;});
   return '<div class="tl-card'+(p.done?' is-done':'')+'">'
     +'<div class="tl-head"><input type="checkbox" '+(p.done?'checked':'')+' data-act="done" data-type="project" data-id="'+p.id+'" title="완료 표시">'
     +'<span class="tl-title">'+esc(p.title)+'</span>'
-    +'<span class="chip biz">'+esc(p.biz)+'</span>'+openChip
-    +(reviews.length?'<span class="chip review">리뷰 '+reviews.length+'건</span>':'')
+    +'<span class="chip biz">'+esc(p.biz)+'</span>'+openChip+reviewChips
     +(p.reopen?'<span class="chip reopen">⟳ 재오픈 이력</span>':'')
     +cardActs('project',p.id,p.done)+'</div>'
     +'<div class="bar">'+segs+'</div>'
@@ -1257,13 +1309,14 @@ function sbOverlayClick(e){if(e.target.id==='sb-overlay'&&sbDownOnOverlay)closeM
 function memList(){return '<datalist id="memList">'+sb.members.map(function(m){return '<option value="'+esc(m.name)+'">';}).join('')+'</datalist>';}
 function bizSelHtml(id,val){return '<select id="'+id+'" class="fi">'+BIZ.map(function(b){return '<option '+(b===val?'selected':'')+'>'+b+'</option>';}).join('')+'</select>';}
 function phaseRowHtml(ph){
-  ph=ph||{name:'',start:'',end:'',owner:'',content:''};
+  ph=ph||{name:'',start:'',end:'',owner:'',content:'',rm:''};
   return '<div class="phblock">'
     +'<div class="phrow">'
     +'<input class="ph-name" value="'+esc(ph.name)+'" placeholder="단계">'
     +'<input type="date" class="ph-s" value="'+esc(ph.start)+'">'
     +'<input type="date" class="ph-e" value="'+esc(ph.end)+'">'
     +'<input class="ph-o" list="memList" value="'+esc(ph.owner)+'" placeholder="담당">'
+    +'<input class="ph-rm" value="'+esc(ph.rm||'')+'" placeholder="레드마인#(선택)">'
     +'<button class="icbtn" data-act="ph-del" title="단계 삭제">✕</button></div>'
     +'<input class="ph-c fi" value="'+esc(ph.content||'')+'" placeholder="내용 (선택)">'
     +'</div>';
@@ -1295,7 +1348,7 @@ function openMailModal(){
   $('#mailTxt').focus();
 }
 function mailPreview(d,pid){
-  var rows=(d.phases&&d.phases.length?d.phases:[{name:'디자인',start:'',end:'',owner:'',content:''}]).map(phaseRowHtml).join('');
+  var rows=(d.phases&&d.phases.length?d.phases:[{name:'디자인',start:'',end:'',owner:'',content:'',rm:''}]).map(phaseRowHtml).join('');
   var revRows=(d.reviews&&d.reviews.length?d.reviews:[]).map(reviewRowHtml).join('');
   openModal('<h3 class="mtitle">'+(pid?'타임라인 수정':'일정 확인')+'</h3><p class="m-sub">읽어온 내용을 확인하고 필요하면 고친 뒤 저장하세요.</p>'+memList()
     +'<div class="fgrid">'
@@ -1317,14 +1370,15 @@ function readPhaseRows(){
     var s=b.querySelector('.ph-s').value,e=b.querySelector('.ph-e').value;
     var o=b.querySelector('.ph-o').value.trim();
     var c=b.querySelector('.ph-c').value.trim();
-    if(name&&s){out.push({name:name,start:s,end:e||s,owner:o,content:c});}
+    var rm=b.querySelector('.ph-rm').value.trim().replace(/^#/,'');
+    if(name&&s){out.push({name:name,start:s,end:e||s,owner:o,content:c,rm:rm});}
   });
   out.sort(function(a,b){return a.start<b.start?-1:1;});
   return out;
 }
 function openRmModal(){
-  openModal('<h3 class="mtitle">레드마인 붙여넣기</h3><p class="m-sub">레드마인 일감 텍스트를 그대로 붙여넣으면 번호·담당자·기간을 읽어옵니다.</p>'
-    +'<textarea id="rmTxt" class="fi" style="min-height:150px" placeholder="[신규 #20454: [퍼블] 세계사 신규 학습생 이벤트 띠배너](http://10.30.100.24/issues/20454) 진행중&#10;* 담당자: 동준 양&#10;* 시작시간: 2026-05-26&#10;* 완료기한: 2026-05-29"></textarea>'
+  openModal('<h3 class="mtitle">레드마인 붙여넣기</h3><p class="m-sub">레드마인 일감 페이지를 열어 전체를 그대로 복사해 붙여넣으면 번호·업무명·담당자·기간을 읽어옵니다. 여러 건을 이어 붙이면 한 번에 여러 개로 나눠 등록할 수 있어요.</p>'
+    +'<textarea id="rmTxt" class="fi" style="min-height:170px" placeholder="신규 #21681 진행중&#10;« 뒤로 | 3/4 | 다음 »&#10;2026년 추석 명절 CJ배송 마감 팝업 및 페이지 제작&#10;조 종은이(가) 약 24시간 전에 추가함.&#10;상태:&#10;대기&#10;담당자:&#10;수영 김&#10;시작시간:&#10;2026/09/08&#10;완료기한:&#10;2026/09/10 (기한 7일)"></textarea>'
     +'<div class="factions"><button class="btn" data-act="modal-close">닫기</button><button class="btn pri" data-act="parse-rm">분석하기</button></div>');
   $('#rmTxt').focus();
 }
@@ -1354,7 +1408,7 @@ function checkPreview(items){
     +'<button class="icbtn" data-act="ck-add" style="margin-top:6px">+ 줄 추가</button>'
     +'<div class="factions"><button class="btn" data-act="modal-close">닫기</button><button class="btn pri" data-act="save-check">모두 등록</button></div>');
 }
-function chainSelHtml(cands,excludeId,currentChain){
+function chainSelHtml(cands,excludeId,currentChain,selAttrs){
   var opts='<option value="">연결 안 함</option>',seen={};
   cands.forEach(function(t){
     seen[t.id]=1;
@@ -1363,7 +1417,7 @@ function chainSelHtml(cands,excludeId,currentChain){
   sb.tasks.filter(function(t){return t.id!==excludeId&&!seen[t.id];}).slice(0,25).forEach(function(t){
     opts+='<option value="'+t.id+'" '+(currentChain&&t.chain===currentChain?'selected':'')+'>#'+esc(t.rm||'?')+' ['+esc(t.tag)+'] '+esc(t.title)+'</option>';
   });
-  return '<select id="rmChain" class="fi">'+opts+'</select>';
+  return '<select '+(selAttrs||'id="rmChain" class="fi"')+'>'+opts+'</select>';
 }
 function rmPreview(d,tid){
   var cands=chainCandidates(d.title,tid||null);
@@ -1387,6 +1441,34 @@ function rmPreview(d,tid){
     +'</div>'
     +'<div class="factions"><button class="btn" data-act="modal-close">닫기</button><button class="btn pri" data-act="save-rm" data-tid="'+(tid||'')+'">저장</button></div>');
 }
+/* 레드마인 일감을 여러 건 한꺼번에 붙여넣었을 때(#20454, #20455 …가 각각 헤더로 잘린 경우)
+   쓰는 표 형태 확인 화면 — 항목 하나하나 열어서 확인하기엔 너무 번거로워서, 표에서
+   한 번에 훑어보고 필요한 줄만 고친 뒤 모두 등록할 수 있게 했다. */
+function rmBulkRowHtml(it){
+  it=it||{rm:'',title:'',tag:'디자인',owner:'',start:'',end:'',biz:'기타'};
+  var tags=['디자인','퍼블','기획','개발','기타'].map(function(x){return '<option '+(x===it.tag?'selected':'')+'>'+x+'</option>';}).join('');
+  var cands=chainCandidates(it.title,null);
+  var chainSel=chainSelHtml(cands,null,null,'class="rb-chain fi"');
+  return '<div class="rbblock">'
+    +'<div class="rbrow">'
+    +'<input class="rb-rm fi" value="'+esc(it.rm)+'" placeholder="번호">'
+    +'<input class="rb-title fi" value="'+esc(it.title)+'" placeholder="업무명">'
+    +'<select class="rb-tag fi">'+tags+'</select>'
+    +'<input class="rb-owner fi" list="memList" value="'+esc(it.owner)+'" placeholder="담당">'
+    +'<input type="date" class="rb-s fi" value="'+esc(it.start)+'">'
+    +'<input type="date" class="rb-e fi" value="'+esc(it.end||it.start)+'">'
+    +'<button class="icbtn" data-act="rb-del" title="줄 삭제">✕</button></div>'
+    +'<div class="rb-chainline"><label>연결할 업무</label>'+chainSel+'</div>'
+    +'</div>';
+}
+function rmBulkPreview(items){
+  var rows=(items.length?items:[null]).map(rmBulkRowHtml).join('');
+  openModal('<h3 class="mtitle">레드마인 일감 '+items.length+'건 확인</h3><p class="m-sub">한 번에 여러 건이 읽혔어요. 확인하고 필요하면 고친 뒤 저장하세요. 업무명이 같은 건은 자동으로 한 타임라인으로 연결돼요.</p>'+memList()
+    +'<div class="rbhead"><span>번호</span><span>업무명</span><span>단계</span><span>담당</span><span>시작</span><span>마감</span><span></span></div>'
+    +'<div id="rbRows">'+rows+'</div>'
+    +'<button class="icbtn" data-act="rb-add" style="margin-top:6px">+ 줄 추가</button>'
+    +'<div class="factions"><button class="btn" data-act="modal-close">닫기</button><button class="btn pri" data-act="save-rm-bulk">모두 등록</button></div>');
+}
 function openIssueModal(type,id){
   openModal('<h3 class="mtitle">이슈 기록</h3><p class="m-sub">이 업무에 대한 이슈나 수정 요청을 메모해 두세요.</p>'
     +'<textarea id="issueTxt" class="fi" style="min-height:80px" placeholder="예) 메인 배너 카피 변경 요청"></textarea>'
@@ -1409,7 +1491,8 @@ function detailModal(type,id){
   }else{
     var p=findProject(id);if(!p)return;
     var rows=p.phases.map(function(ph){
-      return '<div class="dl-row"><b>'+esc(ph.name)+'</b><span>'+fmtMD(ph.start)+' ~ '+fmtMD(ph.end)+(ph.owner?' · '+esc(ph.owner):'')+(ph.content?' — '+esc(ph.content):'')+'</span></div>';
+      var rmLink=ph.rm?' · <a href="'+esc(RM_BASE+ph.rm)+'" target="_blank" rel="noopener">#'+esc(ph.rm)+'</a>':'';
+      return '<div class="dl-row"><b>'+esc(ph.name)+'</b><span>'+fmtMD(ph.start)+' ~ '+fmtMD(ph.end)+(ph.owner?' · '+esc(ph.owner):'')+rmLink+(ph.content?' — '+esc(ph.content):'')+'</span></div>';
     }).join('');
     var revRows2=(p.reviews||[]).map(function(r){
       var meta=[r.time,r.location].filter(Boolean).join(' · ');
@@ -1860,7 +1943,38 @@ document.addEventListener('click',function(e){
   else if(act==='parse-rm'){
     var txt2=$('#rmTxt').value;
     if(!txt2.trim()){toast('레드마인 텍스트를 붙여넣어 주세요');return;}
-    rmPreview(parseRedmine(txt2),null);
+    var blocks=splitRedmineBlocks(txt2);
+    if(blocks.length>1)rmBulkPreview(blocks.map(parseRedmine));
+    else rmPreview(parseRedmine(txt2),null);
+  }
+  else if(act==='rb-add'){$('#rbRows').insertAdjacentHTML('beforeend',rmBulkRowHtml(null));}
+  else if(act==='rb-del'){el.closest('.rbblock').remove();}
+  else if(act==='save-rm-bulk'){
+    var made=[];
+    document.querySelectorAll('#rbRows .rbblock').forEach(function(r){
+      var title3=r.querySelector('.rb-title').value.trim();
+      var s3=r.querySelector('.rb-s').value;
+      if(!title3||!s3)return;
+      var rm3=r.querySelector('.rb-rm').value.trim();
+      var e3=r.querySelector('.rb-e').value||s3;
+      var chainVal=r.querySelector('.rb-chain').value;
+      var chain3=null;
+      if(chainVal){var tgt3=findTask(chainVal);if(tgt3){chain3=tgt3.chain||uid('c');tgt3.chain=chain3;}}
+      var d3={id:uid('t'),rm:rm3,url:rm3?RM_BASE+rm3:'',title:title3,tag:r.querySelector('.rb-tag').value,round:'',owner:r.querySelector('.rb-owner').value.trim(),start:s3,end:e3,biz:guessBiz(title3),status:'진행',prio:'보통',done:false,reopen:false,issues:[],chain:chain3};
+      sb.tasks.push(d3);made.push(d3);
+    });
+    if(!made.length){toast('등록할 업무가 없어요. 업무명과 시작일을 확인해 주세요');return;}
+    made.forEach(function(t){
+      if(t.chain)return; // 이미 위에서 직접 연결을 골랐으면 자동 매칭은 건너뜀
+      var same=sb.tasks.filter(function(o){return o.id!==t.id&&!o.done&&normT(o.title)===normT(t.title);});
+      if(!same.length)return;
+      var ch=null;
+      same.forEach(function(o){if(o.chain&&!ch)ch=o.chain;});
+      if(!ch)ch=uid('c');
+      t.chain=ch;same.forEach(function(o){o.chain=ch;});
+    });
+    cleanupChains();sbSave();renderSbAll();closeModal();
+    toast(made.length+'건 등록했어요');
   }
   else if(act==='save-rm'){
     var tid=el.dataset.tid;
