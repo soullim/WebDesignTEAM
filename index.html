@@ -61,14 +61,8 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
 
 /* 일정보드 */
 #pg-db{padding:1.5rem;max-width:1100px;margin:0 auto}
-.dbtop{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;flex-wrap:wrap;gap:12px}
-.dbtitle{font-family:var(--ftitle);font-size:22px;font-weight:800}
-.dbsub{font-size:14px;color:var(--text3);margin-top:3px}
+.dbtop{display:flex;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap;gap:12px}
 .hbtns{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.dbsync{font-size:12.5px;color:var(--text3);margin-top:4px;min-height:16px}
-.dbsync.warn{color:var(--amber)}
-.dbsync.ok{color:var(--green)}
-.dbsync.err{color:var(--red)}
 
 .sec{background:var(--white);border:1px solid var(--border);border-radius:14px;padding:1.1rem 1.25rem;margin-bottom:1rem}
 .sechd{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:10px}
@@ -79,7 +73,13 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
 
 /* 담당자 범례 */
 .legend{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
+.legend.sm{gap:5px;margin:10px 0}
+.legend.sm .mpill{padding:3px 10px 3px 7px;font-size:11px;gap:4px}
+.legend.sm .mpill .mp-emoji{font-size:12px}
+.legend.sm .mpill .mp-role{font-size:8px}
+.legend.sm .mpill .mp-tag{font-size:8.5px;padding:0 5px}
 .lg-hint{font-size:12px;color:var(--text3);margin-left:2px}
+.legend.sm .lg-hint{font-size:10.5px}
 .mpill{display:inline-flex;align-items:center;gap:6px;padding:5px 13px 5px 9px;border-radius:20px;color:#fff;font-weight:700;font-size:13px;cursor:pointer;border:none;line-height:1.3;transition:filter .15s,opacity .15s;font-family:var(--font)}
 .mpill .mp-emoji{font-size:15px}
 .mpill .mp-role{display:block;font-size:9px;font-weight:500;opacity:.85;letter-spacing:.3px}
@@ -119,6 +119,12 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
 .chip.solo{background:var(--bg2);border:1px solid var(--border2);color:var(--text3);font-weight:500}
 .chip.rmwait{background:var(--amber-soft);color:var(--amber);font-weight:700}
 .dchip.inspect{background:var(--blue-soft);color:var(--blue)}
+.todaybox{margin-bottom:1rem}
+.tdy-head{display:flex;align-items:center;gap:8px;padding:12px 16px;font-weight:700;font-size:14px;color:var(--text2);border-bottom:1px solid var(--border)}
+.tdy-head.warn{color:var(--red);background:var(--red-soft)}
+.tdy-head.ok{color:var(--text3);font-weight:600;border-bottom:none}
+.todaybox.ok{background:var(--white)}
+.tdy-glabel{font-size:11px;font-weight:700;color:var(--text3);padding:9px 16px 3px;background:var(--bg2)}
 .dchip.review{background:var(--blue-soft);color:var(--blue)}
 .tl-acts{margin-left:auto;display:flex;gap:2px}
 .icbtn{font-size:12px;color:var(--text3);padding:4px 8px;border-radius:7px;border:none;background:none;font-family:var(--font);cursor:pointer}
@@ -349,12 +355,8 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
 
 <!-- ═══ 일정보드 ═══ -->
 <div id="pg-db" class="page on">
+  <div class="panel todaybox" id="sbToday"></div>
   <div class="dbtop">
-    <div>
-      <div class="dbtitle">일정보드</div>
-      <div class="dbsub">일정체크·메일·레드마인 텍스트를 붙여넣으면 일정이 자동으로 정리돼요</div>
-      <div class="dbsync" id="sbSync"></div>
-    </div>
     <div class="hbtns">
       <button class="btn pri" data-act="open-check"><i class="ti ti-clipboard-check"></i> 일정체크 붙여넣기</button>
       <button class="btn tl" data-act="open-rm"><i class="ti ti-bug"></i> 레드마인 붙여넣기</button>
@@ -367,8 +369,6 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
       <input type="file" id="sbImportFile" accept=".json" style="display:none">
     </div>
   </div>
-
-  <div class="legend" id="sbLegend"></div>
 
   <div class="kpi-row" id="sbCards"></div>
   <div class="panel" id="sbPanel" hidden></div>
@@ -392,6 +392,7 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
         <button class="btn ghost" data-act="cal-today">오늘</button>
       </div>
     </div>
+    <div class="legend sm" id="sbLegend"></div>
     <div class="dist-wrap" id="sbDist" hidden></div>
     <div class="cal-wrap" id="sbCal"></div>
   </div>
@@ -1043,6 +1044,60 @@ function listReviewsUpcoming(){
   var t=tISO();
   return listReviews().filter(function(r){return !r.date||sbDiff(t,r.date)>=-3;});
 }
+/* 젤 상단 "오늘 확인할 이슈" 요약 — 오늘 마감(업무/오픈/검수/전달)·오늘 회의·리뷰,
+   그리고 이미 지난(놓친) 업무를 한눈에 모아 보여준다. */
+function todayDueTasks(){
+  var t=tISO(),due=[],missed=[];
+  function add(list,title,owner,meta,date){list.push({title:title,owner:owner,meta:meta,date:date});}
+  sb.tasks.forEach(function(tk){
+    if(tk.done||!tk.end)return;
+    if(tk.end===t)add(due,tk.title,tk.owner,tk.tag,tk.end);
+    else if(tk.end<t)add(missed,tk.title,tk.owner,tk.tag,tk.end);
+  });
+  sb.projects.forEach(function(p){
+    if(p.done)return;
+    if(p.open){
+      if(p.open===t)add(due,p.title,'','오픈',p.open);
+      else if(p.open<t)add(missed,p.title,'','오픈',p.open);
+    }
+    if(p.inspect){
+      if(p.inspect===t)add(due,p.title,'','검수',p.inspect);
+      else if(p.inspect<t)add(missed,p.title,'','검수',p.inspect);
+    }
+  });
+  allHandoffs().forEach(function(h){
+    if(h.date===t)add(due,h.title,h.owner,h.label,h.date);
+    else if(h.date<t)add(missed,h.title,h.owner,h.label,h.date);
+  });
+  due.sort(function(a,b){return a.title<b.title?-1:1;});
+  missed.sort(function(a,b){return a.date<b.date?-1:1;});
+  return {due:due,missed:missed};
+}
+function todayMeetings(){
+  var t=tISO();
+  return listReviews().filter(function(r){return r.date===t;}).map(function(r){
+    return {title:r.title||'리뷰 일정',owner:'',meta:[r.time,r.location].filter(Boolean).join(' · '),date:r.date};
+  });
+}
+function tdyRow(r,badgeHtml){
+  return '<div class="pn-row"><span class="pn-title">'+esc(r.title)+'</span>'+(r.owner?miniPill(r.owner):'')+(r.meta?'<span class="pn-sub">'+esc(r.meta)+'</span>':'')+badgeHtml+'</div>';
+}
+function renderTodayBox(){
+  var box=$('#sbToday');if(!box)return;
+  var dm=todayDueTasks(),due=dm.due,missed=dm.missed,meet=todayMeetings();
+  var total=due.length+missed.length+meet.length;
+  if(!total){
+    box.className='panel todaybox ok';
+    box.innerHTML='<div class="tdy-head ok"><i class="ti ti-circle-check"></i> 오늘 마감·회의·지연 이슈가 없어요</div>';
+    return;
+  }
+  box.className='panel todaybox'+(missed.length?' warn':'');
+  var body='';
+  if(due.length)body+='<div class="tdy-glabel">오늘 마감 · '+due.length+'건</div>'+due.map(function(r){return tdyRow(r,'<span class="dchip">D-0</span>');}).join('');
+  if(meet.length)body+='<div class="tdy-glabel">오늘 회의·리뷰 · '+meet.length+'건</div>'+meet.map(function(r){return tdyRow(r,'<span class="dchip inspect">오늘</span>');}).join('');
+  if(missed.length)body+='<div class="tdy-glabel">놓친 업무 · '+missed.length+'건</div>'+missed.map(function(r){return tdyRow(r,'<span class="dchip late">D+'+(-sbDiff(tISO(),r.date))+' 지연</span>');}).join('');
+  box.innerHTML='<div class="tdy-head'+(missed.length?' warn':'')+'"><i class="ti ti-alert-triangle"></i> 오늘 확인할 이슈 · 총 '+total+'건</div>'+body;
+}
 
 /* ══════════════ 렌더: 범례 / 요약 카드 ══════════════ */
 function mpillHtml(m,clickable){
@@ -1059,7 +1114,7 @@ function miniPill(name){
   return '<span class="mpill" style="background:linear-gradient(120deg,'+m.c1+','+m.c2+');padding:2px 10px 2px 7px;font-size:11px"><span class="mp-emoji" style="font-size:12px">'+m.emoji+'</span>'+m.nick+'</span>';
 }
 function renderLegend(){
-  $('#sbLegend').innerHTML=sb.members.map(function(m){return mpillHtml(m,true);}).join('')+'<span class="lg-hint">범례를 누르면 달력에서 켜고 끌 수 있어요</span>';
+  $('#sbLegend').innerHTML=sb.members.map(function(m){return mpillHtml(m,true);}).join('')+'<span class="lg-hint">범례를 누르면 켜고 끌 수 있어요</span>';
 }
 var selCard=null;
 function renderCards(){
@@ -1367,7 +1422,7 @@ function renderWorkload(){
   $('#sbCal').hidden=mode!=='cal';
   if(mode==='cal')renderCal();else renderDist();
 }
-function renderSbAll(){renderLegend();renderCards();renderSbTimeline();renderWorkload();$('#sbSoloChk').checked=!!sb.ui.solo;}
+function renderSbAll(){renderTodayBox();renderLegend();renderCards();renderSbTimeline();renderWorkload();$('#sbSoloChk').checked=!!sb.ui.solo;}
 
 /* ══════════════ 모달 ══════════════ */
 function openModal(html){$('#sb-mbox').innerHTML=html;$('#sb-overlay').classList.add('on');}
@@ -2011,7 +2066,7 @@ document.addEventListener('click',function(e){
     wrSeenMap()[el.dataset.key]=1;
     sbSave();renderSbAll();
   }
-  else if(act==='leg-toggle'){var m=sbMember(el.dataset.name);if(m){m.visible=!m.visible;sbSave();renderLegend();renderCal();}}
+  else if(act==='leg-toggle'){var m=sbMember(el.dataset.name);if(m){m.visible=!m.visible;sbSave();renderLegend();renderWorkload();}}
   else if(act==='cal-prev'){calM--;if(calM<0){calM=11;calY--;}renderCal();}
   else if(act==='cal-next'){calM++;if(calM>11){calM=0;calY++;}renderCal();}
   else if(act==='cal-today'){calY=sbToday().getFullYear();calM=sbToday().getMonth();renderCal();}
