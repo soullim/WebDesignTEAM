@@ -1618,10 +1618,21 @@ var WR_DATA_URL='wr-data.json';
 var wrItems=[],wrLoaded=false;
 function wrKey(it){return [it.team,it.week,it.date,it.kind,it.raw.slice(0,60)].join('|');}
 function wrSeenMap(){sb.wrSeen=sb.wrSeen||{};return sb.wrSeen;}
+/* "8월 3주차" 같은 주차 표기를 정렬용 숫자키로 변환(연도 없이 월/주차만, 클수록 최신) */
+function wrWeekKey(w){
+  var month=0,week=0;
+  var mm=(w||'').match(/(\d{1,2})\s*월/);if(mm)month=+mm[1];
+  var wm=(w||'').match(/(\d{1,2})\s*주차/);if(wm)week=+wm[1];
+  return month*100+week;
+}
 function listWrPending(){
   var seen=wrSeenMap();
   return wrItems.filter(function(it){return !seen[wrKey(it)];})
-    .sort(function(a,b){return a.date<b.date?-1:1;});
+    .sort(function(a,b){
+      var wk=wrWeekKey(b.week)-wrWeekKey(a.week); // 최신 주차 먼저
+      if(wk)return wk;
+      return a.date<b.date?-1:1; // 같은 주차 안에서는 날짜순
+    });
 }
 async function wrLoad(manual){
   try{
@@ -1636,24 +1647,62 @@ async function wrLoad(manual){
     if(manual)toast('주간보고를 불러오지 못했어요 ('+e.message+')');
   }
 }
-function wrProjOptions(){
+/* 제목 유사도로 기존 타임라인을 추천하기 위한 아주 가벼운 문자열 유사도 계산.
+   형태소 분석 없이도 "(영어)","#12345" 같은 잡음을 지우고 글자 2개 단위(바이그램)로
+   겹치는 정도를 보면 한국어 제목끼리도 그럭저럭 잘 맞는다. */
+function normTitleForMatch(s){
+  return (s||'')
+    .replace(/\([^)]*\)/g,' ')
+    .replace(/#\d+/g,' ')
+    .replace(/[^0-9a-zA-Z가-힣]+/g,' ')
+    .trim();
+}
+function bigrams(s){
+  var out=[];
+  for(var i=0;i<s.length-1;i++)out.push(s.substr(i,2));
+  return out;
+}
+function titleSimilarity(a,b){
+  var ba=bigrams(normTitleForMatch(a)),bb=bigrams(normTitleForMatch(b));
+  if(!ba.length||!bb.length)return 0;
+  var count={};
+  ba.forEach(function(x){count[x]=(count[x]||0)+1;});
+  var inter=0;
+  bb.forEach(function(x){if(count[x]>0){count[x]--;inter++;}});
+  return 2*inter/(ba.length+bb.length); // Sørensen–Dice 계수
+}
+function wrProjOptions(refTitle){
   var live=sb.projects.filter(function(p){return !p.done;});
   var head='<option value="">반영할 타임라인 선택…</option><option value="__new__">➕ 새 타임라인으로 추가</option>';
   if(!live.length)return head;
-  return head+live.map(function(p){return '<option value="'+p.id+'">'+esc(p.title)+'</option>';}).join('');
+  var SIM_THRESH=0.28; // 이 이상이면 "제목이 꽤 비슷하다"고 보고 ⭐ 추천 표시
+  var scored=live.map(function(p){return {p:p,score:titleSimilarity(refTitle||'',p.title)};});
+  scored.sort(function(a,b){return b.score-a.score;});
+  return head+scored.map(function(o){
+    var star=o.score>=SIM_THRESH?'⭐ ':'';
+    return '<option value="'+o.p.id+'">'+star+esc(o.p.title)+'</option>';
+  }).join('');
+}
+function wrKindLabel(it){
+  // "기획" 항목은 걸러진 뒤엔 항상 status가 "예정"이라, "기획 · 예정"보다
+  // "기획완료 예정"이라고 한 문장처럼 붙여 써야 무슨 뜻인지 바로 읽힌다.
+  if(it.kind==='기획'&&it.status==='예정')return '기획완료 예정';
+  return it.kind+(it.status?' · '+it.status:'');
 }
 function wrRowHtml(it){
   var key=wrKey(it);
   var kindCls=it.kind==='오픈'?'open':(it.kind==='리뷰'?'inspect':'');
-  var applyCtl=(it.kind==='오픈'||it.kind==='리뷰')
-    ? '<select class="fi wr-proj" style="max-width:180px;display:inline-block">'+wrProjOptions()+'</select><button class="icbtn" data-act="wr-apply" data-key="'+esc(key)+'">반영</button>'
-    : '<span class="pn-sub">직접 반영할 항목은 아니에요</span>';
+  var canApply=(it.kind==='오픈'||it.kind==='리뷰');
+  var applyCtl=canApply
+    ? '<select class="fi wr-proj" style="max-width:180px;display:inline-block">'+wrProjOptions(it.title)+'</select><button class="icbtn" data-act="wr-apply" data-key="'+esc(key)+'">반영</button>'
+    : '<span class="pn-sub" title="기획 완료(예정)일은 타임라인의 특정 필드에 반영할 곳이 없어 정보 확인용으로만 보여드려요">직접 반영할 항목은 아니에요</span>';
+  var dismissTitle=canApply?'이 항목을 목록에서 치워요':'확인했으면 눌러서 목록에서 치워요 (반영할 곳은 없지만 계속 남아있지 않도록)';
   return '<div class="pn-row" style="flex-wrap:wrap">'
     +'<span class="kchip">'+esc(it.team)+' · '+esc(it.week)+'</span>'
-    +'<span class="dchip '+kindCls+'">'+esc(it.kind)+(it.status?' · '+esc(it.status):'')+'</span>'
+    +'<span class="dchip '+kindCls+'">'+esc(wrKindLabel(it))+'</span>'
     +dBadge(it.date)
     +'<div class="pn-title" style="flex-basis:100%;font-weight:400;color:var(--text2)" title="'+esc(it.raw)+'">'+esc(it.title)+'</div>'
-    +'<div style="flex-basis:100%;display:flex;gap:6px;align-items:center;margin-top:2px">'+applyCtl+'<button class="icbtn" data-act="wr-dismiss" data-key="'+esc(key)+'">무시</button></div>'
+    +'<div style="flex-basis:100%;display:flex;gap:6px;align-items:center;margin-top:2px">'+applyCtl+'<button class="icbtn" data-act="wr-dismiss" data-key="'+esc(key)+'" title="'+esc(dismissTitle)+'">무시</button></div>'
     +'</div>';
 }
 
