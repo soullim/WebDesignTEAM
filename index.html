@@ -221,7 +221,8 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
 .rvckhead,.rvckrow{display:grid;grid-template-columns:minmax(120px,1fr) 108px 88px 100px 130px 26px;gap:6px;align-items:center}
 .rvckhead{margin:10px 0 4px}
 .rvckhead span{font-size:11px;color:var(--text3);font-weight:600;padding-left:2px}
-.rvckblock{margin-bottom:10px;padding-bottom:8px;border-bottom:1px dashed var(--border2)}
+.rvckrow{margin-bottom:6px}
+.rvckrow input{padding:6px 8px;font-size:12.5px;border:1px solid var(--border2);border-radius:8px;background:var(--white);color:var(--text);font-family:var(--font)}
 .ph-head{font-size:12px;color:var(--text3);font-weight:600;margin-top:12px}
 .fsec{font-size:13px;font-weight:700;color:var(--text2);margin:16px 0 10px;padding-bottom:5px;border-bottom:1px solid var(--border)}
 .factions{display:flex;gap:8px;justify-content:flex-end;margin-top:1.25rem;padding-top:1.25rem;border-top:1px solid var(--border)}
@@ -519,7 +520,7 @@ function loadSbState(){
   localStorage.setItem(SB_FLAG,'1');
   return sbSeed();
 }
-function sbBlank(){return {members:JSON.parse(JSON.stringify(DEFAULT_MEMBERS)),projects:[],tasks:[],ui:{solo:true},updatedAt:''};}
+function sbBlank(){return {members:JSON.parse(JSON.stringify(DEFAULT_MEMBERS)),projects:[],tasks:[],reviews:[],ui:{solo:true},updatedAt:''};}
 function sbStore(){localStorage.setItem(SB_LS,JSON.stringify(sb));}
 function sbSave(){delete sb._seed;sb.updatedAt=new Date().toISOString();sbStore();setSbDirty(true);}
 function sbSeed(){
@@ -1027,9 +1028,12 @@ function listRmWait(){
 }
 function listReviews(){
   var rows=[];
+  (sb.reviews||[]).forEach(function(r){
+    rows.push({id:r.id,title:r.title,date:r.date,time:r.time,location:r.location,attendees:r.attendees,standalone:true});
+  });
   sb.projects.forEach(function(p){
     (p.reviews||[]).forEach(function(r){
-      rows.push({title:r.title,date:r.date,time:r.time,location:r.location,attendees:r.attendees,url:r.url,projectTitle:p.title,projectId:p.id});
+      rows.push({id:r.id,title:r.title,date:r.date,time:r.time,location:r.location,attendees:r.attendees,url:r.url,projectTitle:p.title,projectId:p.id});
     });
   });
   rows.sort(function(a,b){return (a.date||'9999')<(b.date||'9999')?-1:1;});
@@ -1124,9 +1128,12 @@ function renderPanel(opens,hos,going,iss,revs,rmw,wrp){
   }
   if(selCard==='review'){
     html=revs&&revs.length?revs.map(function(r){
-      var meta=[r.time,r.location].filter(Boolean).join(' · ');
+      var meta=[r.location,r.attendees?('참석 '+r.attendees):''].filter(Boolean).join(' · ');
       var link=r.url?' <a href="'+esc(r.url)+'" target="_blank" rel="noopener">문서 ↗</a>':'';
-      return '<div class="pn-row"><span class="pn-title">'+esc(r.title)+link+'</span><span class="kchip">'+esc(r.projectTitle)+'</span>'+(r.date?dBadge(r.date):'')+(meta?'<span class="pn-sub">'+esc(meta)+'</span>':'')+(r.attendees?'<span class="pn-sub">참석 '+esc(r.attendees)+'</span>':'')+'</div>';
+      var dateChip=r.date?'<span class="kchip">'+esc(fmtMD(r.date))+(r.time?' '+esc(r.time):'')+'</span>'+dBadge(r.date):'';
+      var projChip=r.projectTitle?'<span class="kchip">'+esc(r.projectTitle)+'</span>':'';
+      var delBtn=r.standalone?'<button class="icbtn" data-act="review-del" data-id="'+r.id+'" title="삭제">✕</button>':'';
+      return '<div class="pn-row"><span class="pn-title">'+esc(r.title||'리뷰 일정')+link+'</span>'+projChip+dateChip+(meta?'<span class="pn-sub">'+esc(meta)+'</span>':'')+delBtn+'</div>';
     }).join(''):'<div class="pn-empty">예정된 리뷰·피드백 일정이 없습니다.</div>';
   }
   p.innerHTML=html;p.hidden=false;
@@ -1473,26 +1480,22 @@ function checkPreview(items){
     +'<button class="icbtn" data-act="ck-add" style="margin-top:6px">+ 줄 추가</button>'
     +'<div class="factions"><button class="btn" data-act="modal-close">닫기</button><button class="btn pri" data-act="save-check">모두 등록</button></div>');
 }
-/* 리뷰·회의 일정 공지를 붙여넣었을 때의 확인 화면 — 업무가 아니라 리뷰 일정이라
-   어느 타임라인에 붙일지(또는 새 타임라인으로 만들지) 줄마다 골라야 해서
-   레드마인 여러 건 확인 화면과 비슷하게 만들되, 연결 대상을 프로젝트로 둔다. */
+/* 리뷰·회의 일정 공지를 붙여넣었을 때의 확인 화면 — 타임라인에 새 프로젝트를 만들거나
+   기존 타임라인에 붙이지 않고, 가벼운 별도 목록(sb.reviews)에만 저장한다.
+   상단 "리뷰·피드백 일정" KPI 카드를 펼쳤을 때만 보인다. */
 function reviewCheckRowHtml(it){
   it=it||{title:'',date:'',time:'',location:'',attendees:''};
-  var projOpts=wrProjOptions(it.title,true);
-  return '<div class="rvckblock">'
-    +'<div class="rvckrow">'
+  return '<div class="rvckrow">'
     +'<input class="rvck-title fi" value="'+esc(it.title)+'" placeholder="리뷰/회의 제목">'
     +'<input type="date" class="rvck-date fi" value="'+esc(it.date||'')+'">'
     +'<input class="rvck-time fi" value="'+esc(it.time||'')+'" placeholder="시간(선택)">'
     +'<input class="rvck-loc fi" value="'+esc(it.location||'')+'" placeholder="장소(선택)">'
     +'<input class="rvck-attend fi" value="'+esc(it.attendees||'')+'" placeholder="참석자(선택)">'
-    +'<button class="icbtn" data-act="rvck-del" title="줄 삭제">✕</button></div>'
-    +'<div class="rb-chainline"><label>연결할 타임라인</label><select class="rvck-proj fi">'+projOpts+'</select></div>'
-    +'</div>';
+    +'<button class="icbtn" data-act="rvck-del" title="줄 삭제">✕</button></div>';
 }
 function reviewCheckPreview(items){
   var rows=(items.length?items:[null]).map(reviewCheckRowHtml).join('');
-  openModal('<h3 class="mtitle">리뷰 일정 확인</h3><p class="m-sub">읽어온 리뷰·회의 일정을 확인하고, 어느 타임라인의 리뷰인지 골라주세요 (새 타임라인으로도 추가할 수 있어요).</p>'
+  openModal('<h3 class="mtitle">리뷰 일정 확인</h3><p class="m-sub">읽어온 리뷰·회의 일정을 확인하고 필요하면 고친 뒤 등록하세요. 타임라인에는 추가되지 않고, 위쪽 "리뷰·피드백 일정" KPI 카드를 펼치면 볼 수 있어요.</p>'
     +'<div class="rvckhead"><span>제목</span><span>날짜</span><span>시간</span><span>장소</span><span>참석자</span><span></span></div>'
     +'<div id="rvckRows">'+rows+'</div>'
     +'<button class="icbtn" data-act="rvck-add" style="margin-top:6px">+ 줄 추가</button>'
@@ -1864,13 +1867,17 @@ function wrKindLabel(it){
   if(it.kind==='기획'&&it.status==='예정')return '기획완료 예정';
   return it.kind+(it.status?' · '+it.status:'');
 }
+/* "기획팀 일정" 마스터 시트에서 온 항목인지 — planItem()이 week에 이 접두어를 붙여서 표시해둔다 */
+function isPlanSheetItem(it){return /^기획팀 일정시트/.test(it.week||'');}
 function wrRowHtml(it){
   var key=wrKey(it);
   var kindCls=it.kind==='오픈'?'open':((it.kind==='리뷰'||it.kind==='검수')?'inspect':'');
-  var canApply=(it.kind==='오픈'||it.kind==='리뷰'||it.kind==='검수');
+  var planSrc=isPlanSheetItem(it);
+  var canApply=!planSrc&&(it.kind==='오픈'||it.kind==='리뷰'||it.kind==='검수');
+  var noApplyMsg=planSrc?'기획팀 일정시트 항목은 확인용으로만 보여드려요. 웹디자인팀 타임라인이 기획팀 업무로 채워지지 않도록 타임라인에는 반영하지 않아요.':'기획 완료(예정)일은 타임라인의 특정 필드에 반영할 곳이 없어 정보 확인용으로만 보여드려요';
   var applyCtl=canApply
     ? '<select class="fi wr-proj" style="max-width:180px;display:inline-block">'+wrProjOptions(it.title)+'</select><button class="icbtn" data-act="wr-apply" data-key="'+esc(key)+'">반영</button>'
-    : '<span class="pn-sub" title="기획 완료(예정)일은 타임라인의 특정 필드에 반영할 곳이 없어 정보 확인용으로만 보여드려요">직접 반영할 항목은 아니에요</span>';
+    : '<span class="pn-sub" title="'+esc(noApplyMsg)+'">'+(planSrc?'참고용 항목이에요 (타임라인 미반영)':'직접 반영할 항목은 아니에요')+'</span>';
   var dismissTitle=canApply?'이 항목을 목록에서 치워요':'확인했으면 눌러서 목록에서 치워요 (반영할 곳은 없지만 계속 남아있지 않도록)';
   return '<div class="pn-row" style="flex-wrap:wrap">'
     +'<span class="kchip">'+esc(it.team)+' · '+esc(it.week)+'</span>'
@@ -1901,33 +1908,27 @@ document.addEventListener('click',function(e){
     }
   }
   else if(act==='rvck-add'){$('#rvckRows').insertAdjacentHTML('beforeend',reviewCheckRowHtml(null));}
-  else if(act==='rvck-del'){el.closest('.rvckblock').remove();}
+  else if(act==='rvck-del'){el.closest('.rvckrow').remove();}
   else if(act==='save-rvck'){
-    var savedN=0,skippedN=0;
-    document.querySelectorAll('#rvckRows .rvckblock').forEach(function(b){
+    var savedN=0;
+    document.querySelectorAll('#rvckRows .rvckrow').forEach(function(b){
       var title=b.querySelector('.rvck-title').value.trim();
       var date=b.querySelector('.rvck-date').value;
       var time=b.querySelector('.rvck-time').value.trim();
       var loc=b.querySelector('.rvck-loc').value.trim();
       var attend=b.querySelector('.rvck-attend').value.trim();
       if(!title&&!date&&!time&&!loc&&!attend)return;
-      var pid=b.querySelector('.rvck-proj').value;
-      if(!pid){skippedN++;return;}
-      var proj;
-      if(pid==='__new__'){
-        proj={id:uid('p'),title:title||'리뷰 일정',biz:'',open:'',inspect:'',phases:[],reviews:[],done:false,reopen:false,issues:[]};
-        sb.projects.push(proj);
-      }else{
-        proj=findProject(pid);
-      }
-      if(!proj){skippedN++;return;}
-      proj.reviews=proj.reviews||[];
-      proj.reviews.push({id:uid('r'),title:title||'리뷰 일정',date:date,time:time,location:loc,attendees:attend,url:''});
+      sb.reviews=sb.reviews||[];
+      sb.reviews.push({id:uid('r'),title:title||'리뷰 일정',date:date,time:time,location:loc,attendees:attend});
       savedN++;
     });
-    if(!savedN){toast(skippedN?'타임라인을 먼저 선택해 주세요':'등록할 리뷰 일정이 없어요');return;}
+    if(!savedN){toast('등록할 리뷰 일정이 없어요');return;}
     sbSave();renderSbAll();closeModal();
-    toast(savedN+'건의 리뷰 일정을 등록했어요'+(skippedN?' (타임라인 미선택 '+skippedN+'건은 제외)':''));
+    toast(savedN+'건의 리뷰 일정을 등록했어요 — 타임라인에는 안 뜨고, 리뷰·피드백 일정 카드를 펼치면 볼 수 있어요');
+  }
+  else if(act==='review-del'){
+    sb.reviews=(sb.reviews||[]).filter(function(r){return r.id!==el.dataset.id;});
+    sbSave();renderSbAll();
   }
   else if(act==='ck-add'){$('#chkRows').insertAdjacentHTML('beforeend',checkRowHtml(null));}
   else if(act==='ck-del'){el.closest('.chkrow').remove();}
@@ -1985,11 +1986,12 @@ document.addEventListener('click',function(e){
     wrSeenMap()[el.dataset.key]=1;sbStore();renderCards();
   }
   else if(act==='wr-apply'){
+    var wit=wrItems.filter(function(x){return wrKey(x)===el.dataset.key;})[0];
+    if(!wit)return;
+    if(isPlanSheetItem(wit)){toast('기획팀 일정시트 항목은 타임라인에 반영할 수 없어요 (참고용)');return;}
     var row=el.closest('.pn-row');
     var pid=row.querySelector('.wr-proj').value;
     if(!pid){toast('반영할 타임라인을 먼저 선택해 주세요');return;}
-    var wit=wrItems.filter(function(x){return wrKey(x)===el.dataset.key;})[0];
-    if(!wit)return;
     var proj, isNew=false;
     if(pid==='__new__'){
       proj={id:uid('p'),title:wit.title||(wit.team+' '+wit.kind+' 일정'),biz:'',open:'',inspect:'',phases:[],reviews:[],done:false,reopen:false,issues:[]};
