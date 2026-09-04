@@ -1048,26 +1048,26 @@ function listReviewsUpcoming(){
    그리고 이미 지난(놓친) 업무를 한눈에 모아 보여준다. */
 function todayDueTasks(){
   var t=tISO(),due=[],missed=[];
-  function add(list,title,owner,meta,date){list.push({title:title,owner:owner,meta:meta,date:date});}
+  function put(list,row){list.push(row);}
   sb.tasks.forEach(function(tk){
     if(tk.done||!tk.end)return;
-    if(tk.end===t)add(due,tk.title,tk.owner,tk.tag,tk.end);
-    else if(tk.end<t)add(missed,tk.title,tk.owner,tk.tag,tk.end);
+    var row={title:tk.title,owner:tk.owner,meta:tk.tag,date:tk.end,rm:tk.rm,url:tk.url,ref:{type:'task',id:tk.id},doneToggle:true};
+    if(tk.end===t)put(due,row);else if(tk.end<t)put(missed,row);
   });
   sb.projects.forEach(function(p){
     if(p.done)return;
     if(p.open){
-      if(p.open===t)add(due,p.title,'','오픈',p.open);
-      else if(p.open<t)add(missed,p.title,'','오픈',p.open);
+      var r1={title:p.title,owner:'',meta:'오픈',date:p.open,ref:{type:'project',id:p.id},doneToggle:true};
+      if(p.open===t)put(due,r1);else if(p.open<t)put(missed,r1);
     }
     if(p.inspect){
-      if(p.inspect===t)add(due,p.title,'','검수',p.inspect);
-      else if(p.inspect<t)add(missed,p.title,'','검수',p.inspect);
+      var r2={title:p.title,owner:'',meta:'검수',date:p.inspect,ref:{type:'project',id:p.id},doneToggle:true};
+      if(p.inspect===t)put(due,r2);else if(p.inspect<t)put(missed,r2);
     }
   });
   allHandoffs().forEach(function(h){
-    if(h.date===t)add(due,h.title,h.owner,h.label,h.date);
-    else if(h.date<t)add(missed,h.title,h.owner,h.label,h.date);
+    var row={title:h.title,owner:h.owner,meta:h.label,date:h.date,rm:h.rm,url:h.url,ref:h.ref,doneToggle:false};
+    if(h.date===t)put(due,row);else if(h.date<t)put(missed,row);
   });
   due.sort(function(a,b){return a.title<b.title?-1:1;});
   missed.sort(function(a,b){return a.date<b.date?-1:1;});
@@ -1080,7 +1080,9 @@ function todayMeetings(){
   });
 }
 function tdyRow(r,badgeHtml){
-  return '<div class="pn-row"><span class="pn-title">'+esc(r.title)+'</span>'+(r.owner?miniPill(r.owner):'')+(r.meta?'<span class="pn-sub">'+esc(r.meta)+'</span>':'')+badgeHtml+'</div>';
+  var rmChip=r.rm?' <a href="'+esc(r.url||'')+'" target="_blank" rel="noopener">#'+esc(r.rm)+'</a>':'';
+  var doneBtn=(r.doneToggle&&r.ref)?'<button class="icbtn" data-act="done" data-type="'+r.ref.type+'" data-id="'+r.ref.id+'" title="완료로 표시해서 목록에서 지워요">완료 처리</button>':'';
+  return '<div class="pn-row"><span class="pn-title">'+esc(r.title)+rmChip+'</span>'+(r.owner?miniPill(r.owner):'')+(r.meta?'<span class="pn-sub">'+esc(r.meta)+'</span>':'')+badgeHtml+doneBtn+'</div>';
 }
 function renderTodayBox(){
   var box=$('#sbToday');if(!box)return;
@@ -1173,7 +1175,7 @@ function renderPanel(opens,hos,going,iss,revs,rmw,wrp){
   if(selCard==='going'){
     html=going.length?going.map(function(g){
       var link=g.rm?' <a href="'+esc(g.url)+'" target="_blank" rel="noopener">#'+esc(g.rm)+'</a>':'';
-      return '<div class="pn-row"><span class="kchip">'+g.kind+'</span><span class="pn-title">'+esc(g.title)+link+'</span>'+(g.owner?miniPill(g.owner):'')+'<span class="pn-sub">'+esc(g.sub)+'</span></div>';
+      return '<div class="pn-row"><span class="kchip">'+g.kind+'</span><span class="pn-title">'+esc(g.title)+link+'</span><span class="dchip open">'+esc(g.sub)+'</span>'+(g.owner?miniPill(g.owner):'')+'</div>';
     }).join(''):'<div class="pn-empty">진행 중인 업무가 없습니다.</div>';
   }
   if(selCard==='issue'){
