@@ -189,13 +189,14 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
 .dist-days span.today{background:var(--accent-soft);color:var(--accent);border-radius:6px}
 .dist-grid{flex:1;position:relative;display:grid;grid-auto-rows:22px;gap:3px;padding:8px 0;align-content:start;min-height:42px}
 .dist-cols{position:absolute;inset:0;display:grid;pointer-events:none}
-.dist-cols span.wkend{background:var(--bg2)}
+.dist-cols span.wkend{background:var(--red-soft)}
 .dist-cols span.holiday{background:var(--red-soft)}
 .dist-cols span.today{box-shadow:inset 2px 0 0 var(--accent)}
 .dist-vacbg{position:absolute;inset:0;display:grid;pointer-events:none}
-.dist-vacbg span{background:rgba(148,163,184,.32);border-radius:4px;pointer-events:auto;cursor:pointer}
+.dist-vacbg span{margin-top:8px;height:22px;background:rgba(148,163,184,.16);border-radius:6px;pointer-events:auto;cursor:pointer}
+.dist-vacbg span.vac-dot{width:10px;height:10px;margin-top:14px;border-radius:50%;justify-self:center;background:rgba(148,163,184,.5)}
 .dist-grid .bar-ev{position:relative;z-index:1}
-.bar-vac{background:rgba(148,163,184,.4)!important;color:var(--text2)!important;border:none}
+.bar-vac{background:rgba(148,163,184,.22)!important;color:var(--text2)!important;border:none}
 .dist-empty{padding:16px;font-size:12.5px;color:var(--text3)}
 /* 일정체크 미리보기 */
 .chkhead,.chkrow{display:grid;grid-template-columns:minmax(120px,1fr) 84px 94px 58px 122px 122px 26px;gap:6px;align-items:center}
@@ -397,14 +398,15 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
 
   <div class="sec">
     <div class="sechd">
-      <span class="sectitle"><i class="ti ti-users"></i> 팀 업무 분포<span class="ssub">팀원 색 막대 · ◌ 표시는 레드마인 등록 전 · 범례를 누르면 켜고 끌 수 있어요</span></span>
-      <div class="calnav">
-        <div class="wl-toggle"><button id="wlDist" data-act="wl-mode" data-mode="dist">팀원별</button><button id="wlCal" data-act="wl-mode" data-mode="cal">달력</button></div>
+      <span class="sectitle"><i class="ti ti-users"></i> 팀 업무 분포<span class="calnav">
         <button class="nbtn" data-act="cal-prev" aria-label="이전 달">‹</button>
         <span id="sbCalTitle"></span>
         <button class="nbtn" data-act="cal-next" aria-label="다음 달">›</button>
         <button class="btn ghost" data-act="cal-today">오늘</button>
-        <button class="btn ghost" data-act="vac-open">+ 휴가 관리</button>
+      </span></span>
+      <div class="calnav">
+        <div class="wl-toggle"><button id="wlDist" data-act="wl-mode" data-mode="dist">팀원별</button><button id="wlCal" data-act="wl-mode" data-mode="cal">달력</button></div>
+        <button class="btn ghost" data-act="vac-open">+ 연차 관리</button>
       </div>
     </div>
     <div class="legend sm" id="sbLegend"></div>
@@ -1383,7 +1385,7 @@ function collectBars(){
 }
 function vacBarsVisible(){
   return (sb.vacations||[]).filter(function(v){var m=sbMember(v.member);return m&&m.visible;})
-    .map(function(v){return {s:v.start,e:v.end,owner:v.member,label:'🏖 '+(v.note||'휴가'),done:false,type:'vacation',id:v.id};});
+    .map(function(v){return {s:v.start,e:v.end,owner:v.member,label:'🏖 '+(v.note||'연차'),done:false,type:'vacation',id:v.id};});
 }
 function renderCal(){
   $('#sbCalTitle').textContent=calY+'년 '+(calM+1)+'월';
@@ -1469,7 +1471,9 @@ function renderDist(){
     var vacBg=mvac.map(function(v){
       var si=v.start<mS?1:fromISO(v.start).getDate();
       var ei=v.end>mE?nd:fromISO(v.end).getDate();
-      return '<span style="grid-column:'+si+'/'+(ei+1)+'" data-act="vac-open" title="'+esc(m.name+' 휴가 ('+fmtMD(v.start)+'~'+fmtMD(v.end)+')'+(v.note?' · '+v.note:''))+'"></span>';
+      var single=v.start===v.end;
+      var tip=esc(m.name+' 연차 '+(single?fmtMD(v.start):fmtMD(v.start)+'~'+fmtMD(v.end))+(v.note?' · '+v.note:''));
+      return '<span'+(single?' class="vac-dot"':'')+' style="grid-column:'+si+'/'+(ei+1)+'" data-act="vac-open" title="'+tip+'"></span>';
     }).join('');
     html+='<div class="dist-row"><div class="dist-side">'+miniPill(m.name)
       +'<span class="dist-cnt">이번 달 <b>'+mine.length+'건</b> · 오늘 '+going+'건 진행</span></div>'
@@ -1623,36 +1627,27 @@ function reviewCheckPreview(items){
     +'<button class="icbtn" data-act="rvck-add" style="margin-top:6px">+ 줄 추가</button>'
     +'<div class="factions"><button class="btn" data-act="modal-close">닫기</button><button class="btn pri" data-act="save-rvck">모두 등록</button></div>');
 }
-/* 팀원 휴가 관리 — 팀 업무 분포(팀원별/달력)에 표시된다 */
-function vacRowHtml(v){
-  v=v||{member:'',start:'',end:'',note:''};
-  var opts=sb.members.map(function(m){return '<option '+(m.name===v.member?'selected':'')+'>'+esc(m.name)+'</option>';}).join('');
-  return '<div class="vacrow">'
-    +'<select class="vac-m fi">'+opts+'</select>'
-    +'<input type="date" class="vac-s fi" value="'+esc(v.start||'')+'">'
-    +'<input type="date" class="vac-e fi" value="'+esc(v.end||v.start||'')+'">'
-    +'<input class="vac-note fi" value="'+esc(v.note||'')+'" placeholder="사유(선택)">'
-    +'<button class="icbtn" data-act="vac-del" title="줄 삭제">✕</button></div>';
-}
-function readVacRows(){
-  var out=[];
-  document.querySelectorAll('#vacRows .vacrow').forEach(function(r){
-    var m=r.querySelector('.vac-m').value;
-    var s=r.querySelector('.vac-s').value;
-    var e=r.querySelector('.vac-e').value||s;
-    var note=r.querySelector('.vac-note').value.trim();
-    if(m&&s)out.push({id:uid('v'),member:m,start:s,end:e<s?s:e,note:note});
-  });
-  out.sort(function(a,b){return a.start<b.start?-1:1;});
-  return out;
+/* 팀원 연차 관리 — 팀 업무 분포(팀원별/달력)에 표시된다.
+   한 건씩 입력하면 바로 반영되고, 기존에 등록된 목록은 그대로 유지된 채 아래에 쌓인다
+   (전체를 다시 저장하는 방식이 아니라, 등록/삭제 각각이 즉시 sb.vacations에 반영됨). */
+function vacListRowHtml(v){
+  var range=v.start===v.end?fmtMD(v.start):fmtMD(v.start)+'~'+fmtMD(v.end);
+  return '<div class="pn-row"><span class="pn-title">'+esc(v.member)+'</span><span class="pn-sub">'+esc(range)+(v.note?' · '+esc(v.note):'')+'</span><button class="icbtn" data-act="vac-del" data-id="'+v.id+'" title="삭제">✕</button></div>';
 }
 function vacModal(){
-  var rows=((sb.vacations||[]).length?sb.vacations:[null]).map(vacRowHtml).join('');
-  openModal('<h3 class="mtitle">휴가 관리</h3><p class="m-sub">팀원의 휴가 기간을 등록하면 팀 업무 분포에 표시돼요.</p>'
+  var list=(sb.vacations||[]).slice().sort(function(a,b){return a.start<b.start?-1:1;});
+  var rows=list.length?list.map(vacListRowHtml).join(''):'<div class="pn-empty">등록된 연차가 없습니다.</div>';
+  var opts=sb.members.map(function(m){return '<option>'+esc(m.name)+'</option>';}).join('');
+  openModal('<h3 class="mtitle">연차 관리</h3><p class="m-sub">한 건씩 입력하고 추가하면 바로 반영돼요. 등록된 목록은 아래에 계속 쌓여요.</p>'
     +'<div class="vachead"><span>팀원</span><span>시작일</span><span>종료일</span><span>사유</span><span></span></div>'
-    +'<div id="vacRows">'+rows+'</div>'
-    +'<button class="icbtn" data-act="vac-add" style="margin-top:6px">+ 휴가 추가</button>'
-    +'<div class="factions"><button class="btn" data-act="modal-close">닫기</button><button class="btn pri" data-act="save-vac">저장</button></div>');
+    +'<div class="vacrow"><select id="vacNewM" class="fi">'+opts+'</select>'
+    +'<input type="date" id="vacNewS" class="fi">'
+    +'<input type="date" id="vacNewE" class="fi">'
+    +'<input id="vacNewNote" class="fi" placeholder="사유(선택)">'
+    +'<button class="icbtn" data-act="vac-add-one" title="추가">＋</button></div>'
+    +'<div class="ph-head" style="margin-top:14px">등록된 연차</div>'
+    +'<div id="vacList">'+rows+'</div>'
+    +'<div class="factions"><button class="btn" data-act="modal-close">닫기</button></div>');
 }
 function chainSelHtml(cands,excludeId,currentChain,selAttrs){
   var opts='<option value="">연결 안 함</option>',seen={};
@@ -2083,12 +2078,17 @@ document.addEventListener('click',function(e){
     sbSave();renderSbAll();
   }
   else if(act==='vac-open'){vacModal();}
-  else if(act==='vac-add'){$('#vacRows').insertAdjacentHTML('beforeend',vacRowHtml(null));}
-  else if(act==='vac-del'){el.closest('.vacrow').remove();}
-  else if(act==='save-vac'){
-    sb.vacations=readVacRows();
-    sbSave();renderSbAll();closeModal();
-    toast('휴가 일정을 저장했어요');
+  else if(act==='vac-add-one'){
+    var vm=$('#vacNewM').value,vs=$('#vacNewS').value,ve=$('#vacNewE').value||vs,vn=$('#vacNewNote').value.trim();
+    if(!vm||!vs){toast('팀원과 시작일을 입력해 주세요');return;}
+    sb.vacations=sb.vacations||[];
+    sb.vacations.push({id:uid('v'),member:vm,start:vs,end:ve<vs?vs:ve,note:vn});
+    sbSave();renderSbAll();vacModal();
+    toast('연차를 등록했어요');
+  }
+  else if(act==='vac-del'){
+    sb.vacations=(sb.vacations||[]).filter(function(v){return v.id!==el.dataset.id;});
+    sbSave();renderSbAll();vacModal();
   }
   else if(act==='ck-add'){$('#chkRows').insertAdjacentHTML('beforeend',checkRowHtml(null));}
   else if(act==='ck-del'){el.closest('.chkrow').remove();}
@@ -2172,9 +2172,9 @@ document.addEventListener('click',function(e){
     sbSave();renderSbAll();
   }
   else if(act==='leg-toggle'){var m=sbMember(el.dataset.name);if(m){m.visible=!m.visible;sbSave();renderLegend();renderWorkload();}}
-  else if(act==='cal-prev'){calM--;if(calM<0){calM=11;calY--;}renderCal();}
-  else if(act==='cal-next'){calM++;if(calM>11){calM=0;calY++;}renderCal();}
-  else if(act==='cal-today'){calY=sbToday().getFullYear();calM=sbToday().getMonth();renderCal();}
+  else if(act==='cal-prev'){calM--;if(calM<0){calM=11;calY--;}renderWorkload();}
+  else if(act==='cal-next'){calM++;if(calM>11){calM=0;calY++;}renderWorkload();}
+  else if(act==='cal-today'){calY=sbToday().getFullYear();calM=sbToday().getMonth();renderWorkload();}
   else if(act==='bar')detailModal(type,id);
   else if(act==='done')toggleDone(type,id);
   else if(act==='reopen')doReopen(type,id);
