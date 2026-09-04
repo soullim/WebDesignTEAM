@@ -130,8 +130,10 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
 .icbtn{font-size:12px;color:var(--text3);padding:4px 8px;border-radius:7px;border:none;background:none;font-family:var(--font);cursor:pointer}
 .icbtn:hover{background:var(--white);color:var(--text)}
 .bar{display:flex;height:30px;border-radius:8px;overflow:hidden;font-size:12px;font-weight:600}
-.seg{display:flex;align-items:center;justify-content:center;padding:0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.seg{display:flex;align-items:center;justify-content:center;padding:0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;position:relative}
 .seg a{color:inherit;text-decoration:underline dotted}
+.seg-edit{position:absolute;top:2px;right:2px;width:16px;height:16px;line-height:15px;text-align:center;border-radius:4px;border:none;padding:0;background:rgba(255,255,255,.6);color:inherit;font-size:10px;cursor:pointer;opacity:0;transition:opacity .15s}
+.seg:hover .seg-edit{opacity:1}
 .ph-design{background:#9FE1CB;color:#085041}
 .ph-pub{background:#B5D4F4;color:#0C447C}
 .ph-plan{background:var(--accent-soft);color:var(--accent)}
@@ -1272,7 +1274,8 @@ function projCard(p){
 function taskSeg(t,flex){
   var link=t.rm?'<a href="'+esc(t.url)+'" target="_blank" rel="noopener">#'+esc(t.rm)+'</a> ':'◌ ';
   var lab=link+esc(t.tag)+(t.round?' '+esc(t.round):'')+' '+fmtMD(t.start)+'~'+fmtMD(t.end)+' · '+ownerDisp(t.owner);
-  return '<div class="seg '+phCls(t.tag)+'" style="flex:'+flex+'" title="'+esc(t.title)+'">'+lab+'</div>';
+  return '<div class="seg '+phCls(t.tag)+'" style="flex:'+flex+'" title="'+esc(t.title)+'">'+lab
+    +'<button class="seg-edit" data-act="edit" data-type="task" data-id="'+t.id+'" title="'+esc(t.tag)+' 단계만 따로 수정">✎</button></div>';
 }
 function chainCard(arr){
   var head=arr[0],allDone=arr.every(function(t){return t.done;});
