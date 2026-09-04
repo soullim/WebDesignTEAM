@@ -163,7 +163,8 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
 .days{display:grid;grid-template-columns:repeat(7,1fr);font-size:12px;color:var(--text3)}
 .days span{padding:6px 8px 3px}
 .days .out{opacity:.35}
-.days .wkend{opacity:.6}
+.days .wkend{color:var(--red);opacity:.6}
+.days .sat{color:var(--blue);opacity:.6}
 .days .today{font-weight:800;color:#fff;position:relative}
 .days .today::before{content:'';position:absolute;left:5px;top:4px;width:20px;height:20px;border-radius:50%;background:var(--accent);z-index:0}
 .days .today::after{content:attr(data-d);position:absolute;left:5px;top:4px;width:20px;height:20px;display:flex;align-items:center;justify-content:center;z-index:1}
@@ -185,6 +186,7 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
 .dist-days{flex:1;display:grid}
 .dist-days span{font-size:10.5px;color:var(--text3);text-align:center;padding:5px 0;font-weight:600}
 .dist-days span.wkend{color:var(--red);opacity:.55}
+.dist-days span.sat{color:var(--blue);opacity:.55}
 .dist-days span.holiday{color:var(--red);opacity:1;font-weight:800}
 .dist-days span.today{background:var(--accent-soft);color:var(--accent);border-radius:6px}
 .dist-grid{flex:1;position:relative;display:grid;grid-auto-rows:22px;gap:3px;padding:8px 0;align-content:start;min-height:42px}
@@ -1399,7 +1401,8 @@ function renderCal(){
     var dn='<div class="days">';
     for(var i=0;i<7;i++){
       var d=addD(cur,i),inM=d.getMonth()===calM,isT=iso(d)===t,hn=holidayName(iso(d));
-      var cls=(inM?'':'out ')+(i>4?'wkend ':'')+(hn?'holiday ':'')+(isT?'today':'');
+      var wkCls=i===5?'sat ':(i===6?'wkend ':'');
+      var cls=(inM?'':'out ')+wkCls+(hn?'holiday ':'')+(isT?'today':'');
       dn+='<span class="'+cls.trim()+'"'+(isT?' data-d="'+d.getDate()+'"':'')+(hn?' title="'+esc(hn)+'"':'')+'>'+(isT?'':d.getDate())+'</span>';
     }
     dn+='</div>';
@@ -1443,8 +1446,8 @@ function renderDist(){
   var days='',colBg='';
   for(var d=1;d<=nd;d++){
     var dt=new Date(calY,calM,d),dow=dt.getDay(),dISO=iso(dt);
-    var wk=(dow===0||dow===6),isT=dISO===t,hn=holidayName(dISO);
-    var cls=((wk?'wkend ':'')+(hn?'holiday ':'')+(isT?'today':'')).trim();
+    var wk=(dow===0||dow===6),isSat=dow===6,isT=dISO===t,hn=holidayName(dISO);
+    var cls=((wk?'wkend ':'')+(isSat?'sat ':'')+(hn?'holiday ':'')+(isT?'today':'')).trim();
     days+='<span class="'+cls+'"'+(hn?' title="'+esc(hn)+'"':'')+'>'+d+'</span>';
     colBg+='<span class="'+cls+'"></span>';
   }
@@ -1634,19 +1637,27 @@ function vacListRowHtml(v){
   var range=v.start===v.end?fmtMD(v.start):fmtMD(v.start)+'~'+fmtMD(v.end);
   return '<div class="pn-row"><span class="pn-title">'+esc(v.member)+'</span><span class="pn-sub">'+esc(range)+(v.note?' · '+esc(v.note):'')+'</span><button class="icbtn" data-act="vac-del" data-id="'+v.id+'" title="삭제">✕</button></div>';
 }
+var vacShowPast=false;
 function vacModal(){
-  var list=(sb.vacations||[]).slice().sort(function(a,b){return a.start<b.start?-1:1;});
-  var rows=list.length?list.map(vacListRowHtml).join(''):'<div class="pn-empty">등록된 연차가 없습니다.</div>';
+  var t=tISO();
+  var all=(sb.vacations||[]).slice().sort(function(a,b){return a.start<b.start?-1:1;});
+  var upcoming=all.filter(function(v){return v.end>=t;});
+  var past=all.filter(function(v){return v.end<t;});
+  var shown=vacShowPast?all:upcoming;
+  var emptyMsg=(past.length&&!vacShowPast)?'다가오는 연차가 없습니다.':'등록된 연차가 없습니다.';
+  var rows=shown.length?shown.map(vacListRowHtml).join(''):'<div class="pn-empty">'+emptyMsg+'</div>';
+  var toggleBtn=past.length?'<button class="icbtn" data-act="vac-toggle-past" style="margin-top:8px">'+(vacShowPast?'지난 연차 숨기기':'지난 연차 보기 ('+past.length+'건)')+'</button>':'';
   var opts=sb.members.map(function(m){return '<option>'+esc(m.name)+'</option>';}).join('');
-  openModal('<h3 class="mtitle">연차 관리</h3><p class="m-sub">한 건씩 입력하고 추가하면 바로 반영돼요. 등록된 목록은 아래에 계속 쌓여요.</p>'
+  openModal('<h3 class="mtitle">연차 관리</h3><p class="m-sub">한 건씩 입력하고 추가하면 바로 반영돼요. 지난 연차는 자동으로 접혀서 목록이 계속 길어지지 않아요.</p>'
     +'<div class="vachead"><span>팀원</span><span>시작일</span><span>종료일</span><span>사유</span><span></span></div>'
     +'<div class="vacrow"><select id="vacNewM" class="fi">'+opts+'</select>'
     +'<input type="date" id="vacNewS" class="fi">'
     +'<input type="date" id="vacNewE" class="fi">'
     +'<input id="vacNewNote" class="fi" placeholder="사유(선택)">'
     +'<button class="icbtn" data-act="vac-add-one" title="추가">＋</button></div>'
-    +'<div class="ph-head" style="margin-top:14px">등록된 연차</div>'
-    +'<div id="vacList">'+rows+'</div>'
+    +'<div class="ph-head" style="margin-top:14px">'+(vacShowPast?'전체 연차':'다가오는 연차')+'</div>'
+    +'<div id="vacList" style="max-height:260px;overflow-y:auto">'+rows+'</div>'
+    +toggleBtn
     +'<div class="factions"><button class="btn" data-act="modal-close">닫기</button></div>');
 }
 function chainSelHtml(cands,excludeId,currentChain,selAttrs){
@@ -2077,7 +2088,8 @@ document.addEventListener('click',function(e){
     sb.reviews=(sb.reviews||[]).filter(function(r){return r.id!==el.dataset.id;});
     sbSave();renderSbAll();
   }
-  else if(act==='vac-open'){vacModal();}
+  else if(act==='vac-open'){vacShowPast=false;vacModal();}
+  else if(act==='vac-toggle-past'){vacShowPast=!vacShowPast;vacModal();}
   else if(act==='vac-add-one'){
     var vm=$('#vacNewM').value,vs=$('#vacNewS').value,ve=$('#vacNewE').value||vs,vn=$('#vacNewNote').value.trim();
     if(!vm||!vs){toast('팀원과 시작일을 입력해 주세요');return;}
