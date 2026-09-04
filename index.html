@@ -187,13 +187,15 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
 .dist-days span.wkend{color:var(--red);opacity:.55}
 .dist-days span.holiday{color:var(--red);opacity:1;font-weight:800}
 .dist-days span.today{background:var(--accent-soft);color:var(--accent);border-radius:6px}
-.dist-grid{flex:1;position:relative;display:grid;grid-auto-rows:22px;gap:3px;padding:8px 0;align-content:center;min-height:42px}
+.dist-grid{flex:1;position:relative;display:grid;grid-auto-rows:22px;gap:3px;padding:8px 0;align-content:start;min-height:42px}
 .dist-cols{position:absolute;inset:0;display:grid;pointer-events:none}
 .dist-cols span.wkend{background:var(--bg2)}
 .dist-cols span.holiday{background:var(--red-soft)}
 .dist-cols span.today{box-shadow:inset 2px 0 0 var(--accent)}
+.dist-vacbg{position:absolute;inset:0;display:grid;pointer-events:none}
+.dist-vacbg span{background:rgba(148,163,184,.32);border-radius:4px;pointer-events:auto;cursor:pointer}
 .dist-grid .bar-ev{position:relative;z-index:1}
-.bar-vac{background:repeating-linear-gradient(135deg,var(--bg2),var(--bg2) 6px,var(--border) 6px,var(--border) 12px)!important;color:var(--text2)!important;border:1px dashed var(--border2)}
+.bar-vac{background:rgba(148,163,184,.4)!important;color:var(--text2)!important;border:none}
 .dist-empty{padding:16px;font-size:12.5px;color:var(--text3)}
 /* 일정체크 미리보기 */
 .chkhead,.chkrow{display:grid;grid-template-columns:minmax(120px,1fr) 84px 94px 58px 122px 122px 26px;gap:6px;align-items:center}
@@ -1464,19 +1466,16 @@ function renderDist(){
         bh+='<button class="bar-ev'+(b.done?' is-done':'')+'" style="'+st+'" data-act="bar" data-type="'+b.type+'" data-id="'+b.id+'" title="'+tip+'">'+esc(b.label)+'</button>';
       });
     });
-    mvac.forEach(function(v){
-      var li=-1;
-      for(var j=0;j<lanes.length;j++){if(lanes[j]<v.start){li=j;break;}}
-      if(li<0){li=lanes.length;lanes.push(v.end);}else{lanes[li]=v.end;}
+    var vacBg=mvac.map(function(v){
       var si=v.start<mS?1:fromISO(v.start).getDate();
       var ei=v.end>mE?nd:fromISO(v.end).getDate();
-      var st='grid-column:'+si+'/'+(ei+1)+';grid-row:'+(li+1)+';';
-      bh+='<button class="bar-ev bar-vac" style="'+st+'" data-act="vac-open" title="'+esc(m.name+' 휴가 ('+fmtMD(v.start)+'~'+fmtMD(v.end)+')'+(v.note?' · '+v.note:''))+'">🏖 '+esc(v.note||'휴가')+'</button>';
-    });
+      return '<span style="grid-column:'+si+'/'+(ei+1)+'" data-act="vac-open" title="'+esc(m.name+' 휴가 ('+fmtMD(v.start)+'~'+fmtMD(v.end)+')'+(v.note?' · '+v.note:''))+'"></span>';
+    }).join('');
     html+='<div class="dist-row"><div class="dist-side">'+miniPill(m.name)
       +'<span class="dist-cnt">이번 달 <b>'+mine.length+'건</b> · 오늘 '+going+'건 진행</span></div>'
       +'<div class="dist-grid" style="'+cols+'">'
       +'<div class="dist-cols" style="'+cols+'">'+colBg+'</div>'
+      +(vacBg?'<div class="dist-vacbg" style="'+cols+'">'+vacBg+'</div>':'')
       +(bh||'')+'</div></div>';
   });
   if(!mems.length)html+='<div class="dist-empty">표시할 팀원이 없습니다. 범례에서 팀원을 켜 주세요.</div>';
