@@ -1031,8 +1031,8 @@ function allOpenRows(){
   var rows=[];
   sb.projects.forEach(function(p){
     if(p.done)return;
-    if(p.open)rows.push({title:p.title,date:p.open,kind:'오픈'});
-    if(p.inspect)rows.push({title:p.title,date:p.inspect,kind:'검수'});
+    if(p.open)rows.push({title:p.title,date:p.open,kind:'오픈',projId:p.id,field:'open'});
+    if(p.inspect)rows.push({title:p.title,date:p.inspect,kind:'검수',projId:p.id,field:'inspect'});
   });
   (sb.milestones||[]).forEach(function(m){
     rows.push({title:m.title,date:m.date,kind:m.kind,msId:m.id,team:m.team});
@@ -1231,12 +1231,15 @@ function renderPanel(opens,hos,going,iss,revs,rmw,wrp){
   }
   if(selCard==='open'){
     var openRow=function(o){
-      var src=o.msId?'<span class="kchip">주간보고'+(o.team?' · '+esc(o.team):'')+'</span>':'';
+      var src=o.msId?(o.team?'<span class="kchip">주간보고 · '+esc(o.team)+'</span>':'<span class="kchip">수동 등록</span>'):'<span class="kchip">타임라인</span>';
+      var editAttr=o.msId?'data-ms="'+o.msId+'"':'data-pid="'+o.projId+'" data-field="'+o.field+'"';
+      var edit='<button class="icbtn" data-act="ms-edit" '+editAttr+'>수정</button>';
       var del=o.msId?'<button class="icbtn" data-act="ms-del" data-id="'+o.msId+'" title="목록에서 삭제">✕</button>':'';
-      return '<div class="pn-row"><span class="pn-title">'+esc(o.title)+'</span>'+src+'<span class="dchip '+(o.kind==='검수'?'inspect':'open')+'">'+o.kind+' '+fmtMD(o.date)+'</span>'+dBadge(o.date)+del+'</div>';
+      return '<div class="pn-row"><span class="pn-title">'+esc(o.title)+'</span>'+src+'<span class="dchip '+(o.kind==='검수'?'inspect':'open')+'">'+o.kind+' '+fmtMD(o.date)+'</span>'+dBadge(o.date)+edit+del+'</div>';
     };
     var later=listOpensLater();
-    html='<div class="tdy-glabel" style="padding:12px 16px 4px">이번 주 · '+opens.length+'건</div>'
+    html='<div class="pn-sub" style="padding:12px 16px 4px;display:flex;justify-content:flex-end"><button class="icbtn" data-act="ms-new">+ 오픈·검수 일정 추가</button></div>'
+      +'<div class="tdy-glabel" style="padding:12px 16px 4px">이번 주 · '+opens.length+'건</div>'
       +(opens.length?opens.map(openRow).join(''):'<div class="pn-empty">이번 주(월~일)에 잡힌 오픈·검수 일정이 없습니다.</div>')
       +(later.length?'<div class="tdy-glabel" style="padding:12px 16px 4px">다가오는 일정 · '+later.length+'건</div>'+later.map(openRow).join(''):'');
   }
@@ -1248,7 +1251,8 @@ function renderPanel(opens,hos,going,iss,revs,rmw,wrp){
   if(selCard==='going'){
     html=going.length?going.map(function(g){
       var link=g.rm?' <a href="'+esc(g.url)+'" target="_blank" rel="noopener">#'+esc(g.rm)+'</a>':'';
-      return '<div class="pn-row"><span class="kchip">'+g.kind+'</span><span class="pn-title">'+esc(g.title)+link+' <span class="dchip open" style="margin-left:6px">'+esc(g.sub)+'</span></span>'+(g.owner?miniPill(g.owner):'')+'</div>';
+      return '<div class="pn-row"><span class="kchip">'+g.kind+'</span><span class="pn-title">'+esc(g.title)+link+' <span class="dchip open" style="margin-left:6px">'+esc(g.sub)+'</span></span>'+(g.owner?miniPill(g.owner):'')
+        +'<button class="icbtn" data-act="edit" data-type="'+g.ref.type+'" data-id="'+g.ref.id+'" title="담당·기간을 고치면 팀 업무 분포와 달력에도 바로 반영돼요">수정</button></div>';
     }).join(''):'<div class="pn-empty">진행 중인 업무가 없습니다.</div>';
   }
   if(selCard==='issue'){
@@ -1607,6 +1611,27 @@ function openCheckModal(){
     +'<textarea id="checkTxt" class="fi" style="min-height:170px" placeholder="&lt;디자인:문효진&gt;&#10;- 1차&#10;기존UI변경작업:~9/9&#10;- 2차&#10;신규UI : ~9/18&#10;====&#10;&lt;퍼블&gt;&#10;- 1차&#10;기존UI변경 및 내재화:~9/18&#10;- 2차&#10;신규UI : ~10/8"></textarea>'
     +'<div class="factions"><button class="btn" data-act="modal-close">닫기</button><button class="btn" data-act="check-blank">표로 직접 입력</button><button class="btn pri" data-act="parse-check">분석하기</button></div>');
   $('#checkTxt').focus();
+}
+/* 오픈·검수 일정 등록/수정 — 수동·주간보고 항목(sb.milestones)은 제목·구분·날짜를 모두 고칠 수 있고,
+   타임라인 프로젝트의 오픈/검수일은 그 프로젝트의 날짜 필드를 직접 고친다. */
+function openMsModal(o){
+  o=o||{};
+  var proj=o.pid?findProject(o.pid):null;
+  var ms=o.ms?(sb.milestones||[]).filter(function(m){return m.id===o.ms;})[0]:null;
+  var title=proj?proj.title:(ms?ms.title:'');
+  var kind=proj?(o.field==='inspect'?'검수':'오픈'):(ms?ms.kind:'오픈');
+  var date=proj?proj[o.field]:(ms?ms.date:'');
+  var kinds=['오픈','검수'].map(function(k){return '<option'+(k===kind?' selected':'')+'>'+k+'</option>';}).join('');
+  var saveAttr=proj?'data-pid="'+proj.id+'" data-field="'+o.field+'"':(ms?'data-ms="'+ms.id+'"':'');
+  openModal('<h3 class="mtitle">오픈·검수 일정 '+(proj||ms?'수정':'추가')+'</h3>'
+    +'<p class="m-sub">'+(proj?'타임라인 프로젝트의 '+kind+'일이에요. 여기서 바꾸면 타임라인에도 같이 반영돼요.':'오픈·검수 KPI에만 올라가는 일정이에요 (타임라인에는 추가되지 않아요).')+'</p>'
+    +'<div class="fgrid">'
+    +'<div class="fld full"><label>업무명</label><input class="fi" id="msTitle" value="'+esc(title)+'"'+(proj?' disabled':'')+'></div>'
+    +'<div class="fld"><label>구분</label><select class="fi" id="msKind"'+(proj?' disabled':'')+'>'+kinds+'</select></div>'
+    +'<div class="fld"><label>날짜</label><input class="fi" type="date" id="msDate" value="'+esc(date||'')+'"></div>'
+    +'</div>'
+    +'<div class="factions"><button class="btn" data-act="modal-close">닫기</button><button class="btn pri" data-act="ms-save" '+saveAttr+'>저장</button></div>');
+  (proj?$('#msDate'):$('#msTitle')).focus();
 }
 function openReviewModal(){
   openModal('<h3 class="mtitle">리뷰·피드백 일정</h3><p class="m-sub">리뷰·회의 공지나 피드백 일정이 적힌 메일을 그대로 붙여넣으면 날짜·시간·장소·참석자를 읽어와요. 타임라인에는 추가되지 않고 "리뷰·피드백 일정" KPI 카드에서 볼 수 있어요.</p>'
@@ -2020,6 +2045,25 @@ document.addEventListener('click',function(e){
   else if(act==='ms-del'){
     sb.milestones=(sb.milestones||[]).filter(function(m){return m.id!==el.dataset.id;});
     sbSave();renderSbAll();
+  }
+  else if(act==='ms-new')openMsModal(null);
+  else if(act==='ms-edit')openMsModal({ms:el.dataset.ms,pid:el.dataset.pid,field:el.dataset.field});
+  else if(act==='ms-save'){
+    var msDate=$('#msDate').value;
+    if(!msDate){toast('날짜를 입력해 주세요');return;}
+    if(el.dataset.pid){
+      var mp=findProject(el.dataset.pid);
+      if(mp)mp[el.dataset.field]=msDate;
+    }else{
+      var msTitle=$('#msTitle').value.trim(),msKind=$('#msKind').value;
+      if(!msTitle){toast('업무명을 입력해 주세요');return;}
+      sb.milestones=sb.milestones||[];
+      var cur=el.dataset.ms?sb.milestones.filter(function(m){return m.id===el.dataset.ms;})[0]:null;
+      if(cur){cur.title=msTitle;cur.kind=msKind;cur.date=msDate;}
+      else sb.milestones.push({id:uid('m'),title:msTitle,kind:msKind,date:msDate,team:''});
+    }
+    sbSave();renderSbAll();closeModal();
+    toast('오픈·검수 일정을 저장했어요');
   }
   else if(act==='leg-toggle'){var m=sbMember(el.dataset.name);if(m){m.visible=!m.visible;sbSave();renderLegend();renderWorkload();}}
   else if(act==='cal-prev'){calM--;if(calM<0){calM=11;calY--;}renderWorkload();}
