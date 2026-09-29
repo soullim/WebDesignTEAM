@@ -71,8 +71,6 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
 .sechd{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:10px}
 .sectitle{font-family:var(--ftitle);font-size:15px;font-weight:800;color:var(--text);display:flex;align-items:center;gap:6px}
 .sectitle .ssub{font-family:var(--font);font-size:12.5px;color:var(--text3);font-weight:500;margin-left:8px}
-.mini{font-size:12.5px;color:var(--text2);display:flex;align-items:center;gap:5px;cursor:pointer;font-weight:400}
-.mini input{accent-color:var(--text)}
 
 /* 담당자 범례 */
 .legend{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
@@ -378,27 +376,10 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
   <div class="panel todaybox" id="sbToday"></div>
   <div class="dbtop">
     <div class="hbtns">
-      <button class="btn pri" data-act="open-check"><i class="ti ti-clipboard-check"></i> 일정체크 붙여넣기</button>
-      <button class="btn tl" data-act="open-rm"><i class="ti ti-bug"></i> 레드마인 붙여넣기</button>
+      <button class="btn pri" data-act="open-rm"><i class="ti ti-bug"></i> 레드마인 붙여넣기</button>
+      <button class="btn tl" data-act="open-review"><i class="ti ti-message-circle"></i> 리뷰·피드백 일정</button>
       <button class="btn" data-act="add-manual"><i class="ti ti-plus"></i> 직접 추가</button>
-      <button class="btn" data-act="share-push"><i class="ti ti-cloud-upload"></i> 팀 공유</button>
-      <button class="btn ghost" data-act="share-pull"><i class="ti ti-cloud-download"></i> 팀 데이터 불러오기</button>
-      <button class="btn ghost" data-act="export"><i class="ti ti-download"></i> 내보내기</button>
-      <button class="btn ghost" data-act="import"><i class="ti ti-upload"></i> 가져오기</button>
-      <button class="btn ghost" data-act="share-settings" title="팀 공유 설정"><i class="ti ti-settings"></i></button>
-      <input type="file" id="sbImportFile" accept=".json" style="display:none">
     </div>
-  </div>
-
-  <div class="kpi-row" id="sbCards"></div>
-  <div class="panel" id="sbPanel" hidden></div>
-
-  <div class="sec">
-    <div class="sechd">
-      <span class="sectitle"><i class="ti ti-timeline"></i> 프로젝트 타임라인<span class="ssub">단계가 이어지는 업무</span></span>
-      <label class="mini"><input type="checkbox" id="sbSoloChk"> 퍼블 단독 건 표시</label>
-    </div>
-    <div id="sbTimeline"></div>
   </div>
 
   <div class="sec">
@@ -417,6 +398,16 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
     <div class="legend sm" id="sbLegend"></div>
     <div class="dist-wrap" id="sbDist" hidden></div>
     <div class="cal-wrap" id="sbCal"></div>
+  </div>
+
+  <div class="kpi-row" id="sbCards"></div>
+  <div class="panel" id="sbPanel" hidden></div>
+
+  <div class="sec">
+    <div class="sechd">
+      <span class="sectitle"><i class="ti ti-timeline"></i> 프로젝트 타임라인<span class="ssub">디자인·퍼블이 연결된 업무</span></span>
+    </div>
+    <div id="sbTimeline"></div>
   </div>
 </div>
 
@@ -567,9 +558,9 @@ function loadSbState(){
   localStorage.setItem(SB_FLAG,'1');
   return sbSeed();
 }
-function sbBlank(){return {members:JSON.parse(JSON.stringify(DEFAULT_MEMBERS)),projects:[],tasks:[],reviews:[],vacations:[],ui:{solo:true},updatedAt:''};}
+function sbBlank(){return {members:JSON.parse(JSON.stringify(DEFAULT_MEMBERS)),projects:[],tasks:[],reviews:[],milestones:[],vacations:[],ui:{},updatedAt:''};}
 function sbStore(){localStorage.setItem(SB_LS,JSON.stringify(sb));}
-function sbSave(){delete sb._seed;sb.updatedAt=new Date().toISOString();sbStore();setSbDirty(true);}
+function sbSave(){delete sb._seed;sb.updatedAt=new Date().toISOString();sbStore();}
 function sbSeed(){
   var s=sbBlank();
   s._seed=true;
@@ -974,6 +965,21 @@ function parseReviewMeetings(txt){
   }
   return out;
 }
+/* 리뷰·피드백 일정 붙여넣기 — 회의 공지(일시/장소/참석자)를 먼저 찾고, 없으면
+   일정 메일 안의 "(피드백 : ~날짜)", "~날짜 : 설명", "피드백/리뷰/검토 : 날짜" 표기를 리뷰 일정으로 뽑는다. */
+function parseReviewText(txt){
+  var meetings=parseReviewMeetings(txt);
+  if(meetings.length)return meetings;
+  var pm=parseMail(txt),out=[];
+  pm.reviews.forEach(function(r){
+    out.push({title:r.title||'리뷰 일정',date:r.date||'',time:r.time||'',location:r.location||'',attendees:''});
+  });
+  pm.phases.forEach(function(ph){
+    if(/피드백|리뷰|검토/.test(ph.name))out.push({title:ph.name,date:ph.end,time:'',location:'',attendees:''});
+  });
+  out.sort(function(a,b){return (a.date||'9999')<(b.date||'9999')?-1:1;});
+  return out;
+}
 function normT(t){return String(t).replace(/\[[^\]]*\]/g,'').replace(/[\s·\-–_]/g,'').toLowerCase();}
 function chainCandidates(title,excludeId){
   var n=normT(title);if(n.length<4)return [];
@@ -1020,15 +1026,27 @@ function allHandoffs(){
   hs.sort(function(a,b){return a.date<b.date?-1:1;});
   return hs;
 }
-function listOpens(){
-  var wr=weekRange(),rows=[];
+/* 오픈·검수 일정 — 타임라인 프로젝트의 오픈/검수일 + 주간보고에서 [반영]한 일정(sb.milestones) */
+function allOpenRows(){
+  var rows=[];
   sb.projects.forEach(function(p){
     if(p.done)return;
-    if(p.open&&p.open>=wr[0]&&p.open<=wr[1])rows.push({title:p.title,biz:p.biz,date:p.open,kind:'오픈'});
-    if(p.inspect&&p.inspect>=wr[0]&&p.inspect<=wr[1])rows.push({title:p.title,biz:p.biz,date:p.inspect,kind:'검수'});
+    if(p.open)rows.push({title:p.title,date:p.open,kind:'오픈'});
+    if(p.inspect)rows.push({title:p.title,date:p.inspect,kind:'검수'});
+  });
+  (sb.milestones||[]).forEach(function(m){
+    rows.push({title:m.title,date:m.date,kind:m.kind,msId:m.id,team:m.team});
   });
   rows.sort(function(a,b){return a.date<b.date?-1:1;});
   return rows;
+}
+function listOpens(){
+  var wr=weekRange();
+  return allOpenRows().filter(function(r){return r.date>=wr[0]&&r.date<=wr[1];});
+}
+function listOpensLater(){
+  var wr=weekRange();
+  return allOpenRows().filter(function(r){return r.date>wr[1];});
 }
 function listHandoffsImminent(){
   var t=tISO();
@@ -1110,6 +1128,9 @@ function todayDueTasks(){
       var r2={title:p.title,owner:'',meta:'검수',date:p.inspect,ref:{type:'project',id:p.id},doneToggle:true};
       if(p.inspect===t)put(due,r2);else if(p.inspect<t)put(missed,r2);
     }
+  });
+  (sb.milestones||[]).forEach(function(m){
+    if(m.date===t)put(due,{title:m.title,owner:'',meta:m.kind,date:m.date,doneToggle:false});
   });
   allHandoffs().forEach(function(h){
     var row={title:h.title,owner:h.owner,meta:h.label,date:h.date,rm:h.rm,url:h.url,ref:h.ref,doneToggle:false};
@@ -1197,7 +1218,7 @@ function renderPanel(opens,hos,going,iss,revs,rmw,wrp){
   var html='';
   if(selCard==='wreport'){
     html='<div class="pn-sub" style="padding:14px 16px 10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">'
-      +'<span>주간보고 시트에서 찾은 리뷰·오픈일 후보예요. 확인 후 타임라인을 골라 [반영]을 누르거나, 필요 없으면 [무시]하세요.</span>'
+      +'<span>주간보고 시트에서 찾은 리뷰·오픈·검수일 후보예요 (기획팀 일정시트는 오픈일이 적힌 건만). [반영]하면 타임라인이 아니라 해당 날짜의 오픈·검수 / 리뷰 KPI 목록에 올라가요.</span>'
       +'<span style="display:flex;gap:6px">'
       +'<button class="icbtn" data-act="wr-unhide" title="이전에 [무시]한 항목도 다시 보여줘요">숨긴 항목 다시 보기</button>'
       +'<button class="icbtn" data-act="wr-refresh">↻ 새로고침</button></span></div>'
@@ -1209,9 +1230,15 @@ function renderPanel(opens,hos,going,iss,revs,rmw,wrp){
     }).join(''):'<div class="pn-empty">레드마인 등록을 기다리는 건이 없습니다.</div>';
   }
   if(selCard==='open'){
-    html=opens.length?opens.map(function(o){
-      return '<div class="pn-row"><span class="pn-title">'+esc(o.title)+'</span><span class="dchip '+(o.kind==='검수'?'inspect':'open')+'">'+o.kind+' '+fmtMD(o.date)+'</span>'+dBadge(o.date)+'</div>';
-    }).join(''):'<div class="pn-empty">이번 주(월~일)에 잡힌 오픈·검수 일정이 없습니다.</div>';
+    var openRow=function(o){
+      var src=o.msId?'<span class="kchip">주간보고'+(o.team?' · '+esc(o.team):'')+'</span>':'';
+      var del=o.msId?'<button class="icbtn" data-act="ms-del" data-id="'+o.msId+'" title="목록에서 삭제">✕</button>':'';
+      return '<div class="pn-row"><span class="pn-title">'+esc(o.title)+'</span>'+src+'<span class="dchip '+(o.kind==='검수'?'inspect':'open')+'">'+o.kind+' '+fmtMD(o.date)+'</span>'+dBadge(o.date)+del+'</div>';
+    };
+    var later=listOpensLater();
+    html='<div class="tdy-glabel" style="padding:12px 16px 4px">이번 주 · '+opens.length+'건</div>'
+      +(opens.length?opens.map(openRow).join(''):'<div class="pn-empty">이번 주(월~일)에 잡힌 오픈·검수 일정이 없습니다.</div>')
+      +(later.length?'<div class="tdy-glabel" style="padding:12px 16px 4px">다가오는 일정 · '+later.length+'건</div>'+later.map(openRow).join(''):'');
   }
   if(selCard==='handoff'){
     html=hos.length?hos.map(function(h){
@@ -1340,36 +1367,25 @@ function chainCard(arr){
     +'<div class="tl-foot">'+(allDone?'':nextHandoffLine(hs))+'</div>'
     +arr.map(function(t){return issuesHtml(t,'task');}).join('')+'</div>';
 }
-function soloCard(t){
-  var segs=taskSeg(t,'2')+'<div class="seg ph-stub" style="flex:1">개발 전달 '+fmtMD(t.end)+'<button class="seg-edit" data-act="edit" data-type="task" data-id="'+t.id+'" title="전달일(완료기한) 수정">✎</button></div>';
-  var hs=allHandoffs().filter(function(h){return h.ref.type==='task'&&h.ref.id===t.id;});
-  return '<div class="tl-card'+(t.done?' is-done':'')+'">'
-    +'<div class="tl-head"><input type="checkbox" '+(t.done?'checked':'')+' data-act="done" data-type="task" data-id="'+t.id+'" title="완료 표시">'
-    +'<span class="tl-title">'+esc(t.title)+'</span>'
-    +'<span class="chip solo">퍼블 단독</span>'
-    +(!t.rm&&!t.done?'<span class="chip rmwait">레드마인 대기</span>':'')
-    +(t.reopen?'<span class="chip reopen">⟳ 재오픈 이력</span>':'')
-    +cardActs('task',t.id,t.done,true)+'</div>'
-    +'<div class="bar">'+segs+'</div>'
-    +'<div class="tl-foot">'+(t.done?'':nextHandoffLine(hs))+'</div>'
-    +issuesHtml(t,'task')+'</div>';
+/* 타임라인에는 디자인과 퍼블이 함께 이어진 업무만 올린다 — 단독 업무나
+   주간보고로 만든 날짜뿐인 항목은 달력·KPI 쪽에서만 본다. */
+function hasDesignAndPub(names){
+  return names.some(function(n){return /디자인/.test(n||'');})&&names.some(function(n){return /퍼블/.test(n||'');});
 }
 function renderSbTimeline(){
   var g=chainGroups(),html='';
   var items=[];
   sb.projects.forEach(function(p){
-    var s=p.phases.length?p.phases[0].start:'9999';
-    items.push({sort:s,html:projCard(p)});
+    if(!hasDesignAndPub(p.phases.map(function(ph){return ph.name;})))return;
+    items.push({sort:p.phases[0].start,html:projCard(p)});
   });
-  for(var k in g)items.push({sort:g[k][0].start,html:chainCard(g[k])});
-  if(sb.ui.solo){
-    sb.tasks.forEach(function(t){
-      if(!t.chain&&t.tag==='퍼블')items.push({sort:t.start,html:soloCard(t)});
-    });
+  for(var k in g){
+    if(!hasDesignAndPub(g[k].map(function(t){return t.tag;})))continue;
+    items.push({sort:g[k][0].start,html:chainCard(g[k])});
   }
   items.sort(function(a,b){return a.sort<b.sort?-1:1;});
   html=items.map(function(i){return i.html;}).join('');
-  $('#sbTimeline').innerHTML=html||'<div class="empty">아직 등록된 타임라인 업무가 없습니다.<br>메일 본문을 붙여넣으면 디자인→퍼블→개발 일정이 자동으로 만들어져요.</div>';
+  $('#sbTimeline').innerHTML=html||'<div class="empty">디자인·퍼블이 연결된 업무가 아직 없습니다.<br>같은 업무명으로 디자인·퍼블을 등록하거나, 등록할 때 "연결할 업무"를 고르면 여기에 한 줄로 이어져요.</div>';
 }
 
 /* ══════════════ 렌더: 달력 ══════════════ */
@@ -1500,7 +1516,7 @@ function renderWorkload(){
   $('#sbCal').hidden=mode!=='cal';
   if(mode==='cal')renderCal();else renderDist();
 }
-function renderSbAll(){renderTodayBox();renderLegend();renderCards();renderSbTimeline();renderWorkload();$('#sbSoloChk').checked=!!sb.ui.solo;}
+function renderSbAll(){renderTodayBox();renderLegend();renderCards();renderSbTimeline();renderWorkload();}
 
 /* ══════════════ 모달 ══════════════ */
 function openModal(html){$('#sb-mbox').innerHTML=html;$('#sb-overlay').classList.add('on');}
@@ -1587,10 +1603,16 @@ function openRmModal(){
   $('#rmTxt').focus();
 }
 function openCheckModal(){
-  openModal('<h3 class="mtitle">일정체크 붙여넣기</h3><p class="m-sub">실무자 일정 체크 텍스트를 그대로 붙여넣으면 담당자별 업무로 등록됩니다. 레드마인 번호는 나중에 채워도 돼요. 리뷰·회의 일정 공지 문구를 붙여넣으면 자동으로 알아보고 리뷰 일정으로 등록해요.</p>'
+  openModal('<h3 class="mtitle">직접 추가</h3><p class="m-sub">실무자 일정 체크 텍스트를 붙여넣으면 담당자별 업무로 나눠 읽어와요. 붙여넣을 게 없으면 [표로 직접 입력]으로 바로 적으면 돼요. 레드마인 번호는 나중에 채워도 돼요.</p>'
     +'<textarea id="checkTxt" class="fi" style="min-height:170px" placeholder="&lt;디자인:문효진&gt;&#10;- 1차&#10;기존UI변경작업:~9/9&#10;- 2차&#10;신규UI : ~9/18&#10;====&#10;&lt;퍼블&gt;&#10;- 1차&#10;기존UI변경 및 내재화:~9/18&#10;- 2차&#10;신규UI : ~10/8"></textarea>'
-    +'<div class="factions"><button class="btn" data-act="modal-close">닫기</button><button class="btn pri" data-act="parse-check">분석하기</button></div>');
+    +'<div class="factions"><button class="btn" data-act="modal-close">닫기</button><button class="btn" data-act="check-blank">표로 직접 입력</button><button class="btn pri" data-act="parse-check">분석하기</button></div>');
   $('#checkTxt').focus();
+}
+function openReviewModal(){
+  openModal('<h3 class="mtitle">리뷰·피드백 일정</h3><p class="m-sub">리뷰·회의 공지나 피드백 일정이 적힌 메일을 그대로 붙여넣으면 날짜·시간·장소·참석자를 읽어와요. 타임라인에는 추가되지 않고 "리뷰·피드백 일정" KPI 카드에서 볼 수 있어요.</p>'
+    +'<textarea id="reviewTxt" class="fi" style="min-height:170px" placeholder="[T클래스] 우리교실 학습관리 개편_기획서 리뷰&#10;일시 : 10/2(목) 오전 10시&#10;장소 : 미션 4룸&#10;참석자 : 김수영, 양동준&#10;&#10;또는&#10;- 디자인 : 10/6~10/10 (피드백 : 10/13까지)&#10;~10/15 : 피드백 반영 및 최종 전달"></textarea>'
+    +'<div class="factions"><button class="btn" data-act="modal-close">닫기</button><button class="btn" data-act="review-blank">표로 직접 입력</button><button class="btn pri" data-act="parse-review">분석하기</button></div>');
+  $('#reviewTxt').focus();
 }
 function checkRowHtml(it){
   it=it||{title:'',tag:'디자인',owner:'',round:'',start:'',end:''};
@@ -1664,14 +1686,26 @@ function vacModal(){
     +'<div class="factions"><button class="btn" data-act="modal-close">닫기</button></div>');
 }
 function chainSelHtml(cands,excludeId,currentChain,selAttrs){
+  function selAttr(t){return currentChain&&t.chain===currentChain?' selected':'';}
+  function label(t){return '#'+esc(t.rm||'?')+' ['+esc(t.tag)+'] '+esc(t.title)+(t.start?' · '+fmtMD(t.start)+'~'+fmtMD(t.end):'');}
   var opts='<option value="">연결 안 함</option>',seen={};
   cands.forEach(function(t){
     seen[t.id]=1;
-    opts+='<option value="'+t.id+'" '+(currentChain&&t.chain===currentChain?'selected':'')+'>추천 · #'+esc(t.rm||'?')+' ['+esc(t.tag)+'] '+esc(t.title)+'</option>';
+    opts+='<option value="'+t.id+'"'+selAttr(t)+'>추천 · '+label(t)+'</option>';
   });
-  sb.tasks.filter(function(t){return t.id!==excludeId&&!seen[t.id];}).slice(0,25).forEach(function(t){
-    opts+='<option value="'+t.id+'" '+(currentChain&&t.chain===currentChain?'selected':'')+'>#'+esc(t.rm||'?')+' ['+esc(t.tag)+'] '+esc(t.title)+'</option>';
+  var rest=sb.tasks.filter(function(t){return t.id!==excludeId&&!seen[t.id]&&(!t.done||selAttr(t));})
+    .sort(function(a,b){return (a.start||'')<(b.start||'')?-1:1;});
+  var group=null;
+  rest.forEach(function(t){
+    var ym=(t.start||'').slice(0,7);
+    if(ym!==group){
+      if(group!==null)opts+='</optgroup>';
+      opts+='<optgroup label="'+(ym?(+ym.slice(0,4))+'년 '+(+ym.slice(5,7))+'월':'날짜 없음')+'">';
+      group=ym;
+    }
+    opts+='<option value="'+t.id+'"'+selAttr(t)+'>'+label(t)+'</option>';
   });
+  if(group!==null)opts+='</optgroup>';
   return '<select '+(selAttrs||'id="rmChain" class="fi"')+'>'+opts+'</select>';
 }
 function rmPreview(d,tid){
@@ -1799,152 +1833,6 @@ function doDelete(type,id){
   sbSave();renderSbAll();toast('삭제했어요');
 }
 
-/* ══════════════ 내보내기 / 가져오기 ══════════════ */
-function exportSbJson(){
-  var blob=new Blob([JSON.stringify(sb,null,2)],{type:'application/json'});
-  var a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download='일정보드-백업-'+tISO()+'.json';
-  a.click();
-  toast('백업 파일을 내려받았어요');
-}
-function importSbJson(file){
-  var rd=new FileReader();
-  rd.onload=function(){
-    try{
-      var s=JSON.parse(rd.result);
-      if(!s||!s.members||!s.tasks)throw new Error('bad');
-      sb=s;sbSave();renderSbAll();toast('백업을 불러왔어요');
-    }catch(e){toast('파일을 읽지 못했어요. 일정보드 백업 파일인지 확인해 주세요.');}
-  };
-  rd.readAsText(file);
-}
-
-/* ══════════════ 팀 공유 (GitHub 저장소 동기화) ══════════════
-   저장소의 board-data.json을 팀 공유 데이터로 사용.
-   읽기는 공개 API라 토큰 없이 동작, 쓰기(팀 공유)만 GitHub 토큰 필요. */
-/* Google Apps Script 웹 앱 URL — team-sync-apps-script.gs 배포 후 발급된 /exec URL을 입력.
-   비어 있으면 예전 GitHub(board-data.json + 토큰) 방식으로 동작한다. */
-var SB_GAS_URL='';
-var SB_REPO='soullim/WebDesignTEAM', SB_DATA='board-data.json', SB_BRANCH='main';
-var SB_TOKEN_KEY='wdsb_gh_token', SB_DIRTY_KEY='wdsb_dirty';
-function ghToken(){return localStorage.getItem(SB_TOKEN_KEY)||'';}
-function sbDirty(){return localStorage.getItem(SB_DIRTY_KEY)==='1';}
-function setSbDirty(v){if(v)localStorage.setItem(SB_DIRTY_KEY,'1');else localStorage.removeItem(SB_DIRTY_KEY);syncStatus();}
-function fmtStamp(s){if(!s)return'';var d=new Date(s);return (d.getMonth()+1)+'/'+d.getDate()+' '+pad(d.getHours())+':'+pad(d.getMinutes());}
-function syncStatus(msg,cls){
-  var el=document.getElementById('sbSync');if(!el)return;
-  if(msg){el.textContent=msg;el.className='dbsync'+(cls?' '+cls:'');return;}
-  if(sbDirty()){el.textContent='⚠ 공유되지 않은 변경사항 — [팀 공유]를 누르면 다른 PC에서도 보여요';el.className='dbsync warn';}
-  else if(sb.updatedAt){el.textContent='팀 데이터 동기화됨 · '+fmtStamp(sb.updatedAt);el.className='dbsync ok';}
-  else{el.textContent='';el.className='dbsync';}
-}
-async function sbRemoteLoad(manual){
-  try{
-    var remote;
-    if(SB_GAS_URL){
-      var g=await fetch(SB_GAS_URL+'?t='+Date.now(),{redirect:'follow'});
-      if(!g.ok)throw new Error('HTTP '+g.status);
-      remote=await g.json();
-      if(!remote||!remote.members){if(manual)toast('아직 공유된 팀 데이터가 없어요');syncStatus();return;}
-    }else{
-      var r=await fetch('https://api.github.com/repos/'+SB_REPO+'/contents/'+SB_DATA+'?ref='+SB_BRANCH,
-        {cache:'no-store',headers:{Accept:'application/vnd.github.raw+json'}});
-      if(!r.ok)throw new Error('HTTP '+r.status);
-      remote=await r.json();
-      if(!remote||!remote.members)throw new Error('데이터 형식 오류');
-    }
-    if((remote.updatedAt||'')>(sb.updatedAt||'')){
-      if(sbDirty()&&!confirm('다른 PC에서 업데이트된 팀 데이터가 있어요.\n아직 공유하지 않은 내 변경사항을 버리고 팀 데이터를 불러올까요?')){syncStatus();return;}
-      sb=remote;sbStore();setSbDirty(false);renderSbAll();
-      syncStatus('팀 데이터 불러옴 · '+fmtStamp(remote.updatedAt),'ok');
-      if(manual)toast('팀 데이터를 불러왔어요');
-    }else{
-      if(manual)toast('이미 최신 데이터예요');
-      syncStatus();
-    }
-  }catch(e){
-    if(manual){toast('팀 데이터를 불러오지 못했어요 ('+e.message+')');syncStatus('팀 데이터 불러오기 실패 — '+e.message,'err');}
-    else syncStatus();
-  }
-}
-async function sbRemotePush(){
-  if(SB_GAS_URL)return sbGasPush();
-  var tk=ghToken();
-  if(!tk){openTokenModal();return;}
-  syncStatus('팀 공유 중...','');
-  try{
-    var sha=null,remoteStamp='';
-    var meta=await fetch('https://api.github.com/repos/'+SB_REPO+'/contents/'+SB_DATA+'?ref='+SB_BRANCH,
-      {cache:'no-store',headers:{Accept:'application/vnd.github+json',Authorization:'Bearer '+tk}});
-    if(meta.ok){
-      var mj=await meta.json();sha=mj.sha;
-      try{var cur=JSON.parse(decodeURIComponent(escape(atob(String(mj.content||'').replace(/\n/g,'')))));remoteStamp=cur.updatedAt||'';}catch(e2){}
-    }else if(meta.status!==404)throw new Error('HTTP '+meta.status);
-    if(remoteStamp&&remoteStamp>(sb.updatedAt||'')){
-      if(!confirm('다른 PC에서 더 최신 데이터가 공유되어 있어요.\n내 데이터로 덮어쓸까요? (취소 후 [팀 데이터 불러오기]로 확인 가능)')){syncStatus();return;}
-    }
-    delete sb._seed;
-    sb.updatedAt=new Date().toISOString();
-    var body={message:'일정보드 데이터 업데이트 ('+tISO()+')',content:btoa(unescape(encodeURIComponent(JSON.stringify(sb,null,1)))),branch:SB_BRANCH};
-    if(sha)body.sha=sha;
-    var r=await fetch('https://api.github.com/repos/'+SB_REPO+'/contents/'+SB_DATA,
-      {method:'PUT',headers:{Accept:'application/vnd.github+json',Authorization:'Bearer '+tk,'Content-Type':'application/json'},body:JSON.stringify(body)});
-    if(!r.ok){
-      if(r.status===401)throw new Error('토큰이 유효하지 않아요');
-      if(r.status===403)throw new Error('토큰에 이 저장소 쓰기 권한이 없어요');
-      if(r.status===409||r.status===422)throw new Error('충돌이 났어요 — [팀 데이터 불러오기] 후 다시 시도');
-      throw new Error('HTTP '+r.status);
-    }
-    sbStore();setSbDirty(false);
-    syncStatus('팀 공유됨 · '+fmtStamp(sb.updatedAt),'ok');
-    toast('팀 저장소에 공유했어요');
-  }catch(e){
-    syncStatus('공유 실패 — '+e.message,'err');
-    toast('공유 실패 — '+e.message);
-  }
-}
-async function sbGasPush(){
-  syncStatus('팀 공유 중...','');
-  try{
-    // 다른 PC에서 더 최신 데이터를 올렸는지 먼저 확인
-    var remoteStamp='';
-    try{
-      var r0=await fetch(SB_GAS_URL+'?t='+Date.now(),{redirect:'follow'});
-      if(r0.ok){var cur=await r0.json();remoteStamp=(cur&&cur.updatedAt)||'';}
-    }catch(e0){}
-    if(remoteStamp&&remoteStamp>(sb.updatedAt||'')){
-      if(!confirm('다른 PC에서 더 최신 데이터가 공유되어 있어요.\n내 데이터로 덮어쓸까요? (취소 후 [팀 데이터 불러오기]로 확인 가능)')){syncStatus();return;}
-    }
-    delete sb._seed;
-    sb.updatedAt=new Date().toISOString();
-    var r=await fetch(SB_GAS_URL,{method:'POST',redirect:'follow',body:JSON.stringify(sb)});
-    if(!r.ok)throw new Error('HTTP '+r.status);
-    var res=await r.json();
-    if(!res||!res.ok)throw new Error((res&&res.error)||'저장 실패');
-    sbStore();setSbDirty(false);
-    syncStatus('팀 공유됨 · '+fmtStamp(sb.updatedAt),'ok');
-    toast('팀 시트에 공유했어요');
-  }catch(e){
-    syncStatus('공유 실패 — '+e.message,'err');
-    toast('공유 실패 — '+e.message);
-  }
-}
-function openTokenModal(){
-  openModal('<h3 class="mtitle">팀 공유 설정</h3>'
-    +'<p class="m-sub">일정 데이터를 깃허브 저장소(board-data.json)에 저장해 다른 PC와 공유합니다.<br>불러오기는 토큰 없이 자동으로 되고, <b>공유(쓰기)할 때만</b> GitHub 토큰이 필요해요.</p>'
-    +'<div class="note" style="margin-bottom:10px">토큰 발급: GitHub → Settings → Developer settings → <b>Fine-grained tokens</b> → Generate new token<br>'
-    +'· Repository access: <b>Only select repositories → WebDesignTEAM</b><br>'
-    +'· Permissions → Contents: <b>Read and write</b><br>'
-    +'토큰은 이 브라우저에만 저장되며 저장소에 올라가지 않아요.</div>'
-    +'<div class="fld full"><label>GitHub 토큰</label><input class="fi" id="ghTk" type="password" value="'+esc(ghToken())+'" placeholder="github_pat_..."></div>'
-    +'<div class="factions">'
-    +(ghToken()?'<button class="btn" data-act="token-clear">토큰 삭제</button>':'')
-    +'<button class="btn" data-act="modal-close">닫기</button>'
-    +'<button class="btn pri" data-act="token-save">저장하고 공유</button></div>');
-  $('#ghTk').focus();
-}
-
 /* ══════════════ 주간보고 연동 ══════════════
    IT부문 주간업무 보고 시트의 리뷰일·오픈일 후보를, 깃허브 액션이 주기적으로
    Apps Script에서 대신 읽어와 이 저장소의 wr-data.json 파일로 저장해둔다.
@@ -1964,7 +1852,11 @@ function wrWeekKey(w){
 }
 function listWrPending(){
   var seen=wrSeenMap();
-  return wrItems.filter(function(it){return !seen[wrKey(it)];})
+  return wrItems.filter(function(it){
+      if(seen[wrKey(it)])return false;
+      if(isPlanSheetItem(it))return it.kind==='오픈'&&!!it.date;
+      return true;
+    })
     .sort(function(a,b){
       var wk=wrWeekKey(b.week)-wrWeekKey(a.week); // 최신 주차 먼저
       if(wk)return wk;
@@ -1984,44 +1876,6 @@ async function wrLoad(manual){
     if(manual)toast('주간보고를 불러오지 못했어요 ('+e.message+')');
   }
 }
-/* 제목 유사도로 기존 타임라인을 추천하기 위한 아주 가벼운 문자열 유사도 계산.
-   형태소 분석 없이도 "(영어)","#12345" 같은 잡음을 지우고 글자 2개 단위(바이그램)로
-   겹치는 정도를 보면 한국어 제목끼리도 그럭저럭 잘 맞는다. */
-function normTitleForMatch(s){
-  return (s||'')
-    .replace(/\([^)]*\)/g,' ')
-    .replace(/#\d+/g,' ')
-    .replace(/[^0-9a-zA-Z가-힣]+/g,' ')
-    .trim();
-}
-function bigrams(s){
-  var out=[];
-  for(var i=0;i<s.length-1;i++)out.push(s.substr(i,2));
-  return out;
-}
-function titleSimilarity(a,b){
-  var ba=bigrams(normTitleForMatch(a)),bb=bigrams(normTitleForMatch(b));
-  if(!ba.length||!bb.length)return 0;
-  var count={};
-  ba.forEach(function(x){count[x]=(count[x]||0)+1;});
-  var inter=0;
-  bb.forEach(function(x){if(count[x]>0){count[x]--;inter++;}});
-  return 2*inter/(ba.length+bb.length); // Sørensen–Dice 계수
-}
-function wrProjOptions(refTitle,autoPick){
-  var live=sb.projects.filter(function(p){return !p.done;});
-  var head='<option value="">반영할 타임라인 선택…</option><option value="__new__">➕ 새 타임라인으로 추가</option>';
-  if(!live.length)return head;
-  var SIM_THRESH=0.28; // 이 이상이면 "제목이 꽤 비슷하다"고 보고 ⭐ 추천 표시
-  var scored=live.map(function(p){return {p:p,score:titleSimilarity(refTitle||'',p.title)};});
-  scored.sort(function(a,b){return b.score-a.score;});
-  var bestId=(autoPick&&scored.length&&scored[0].score>=SIM_THRESH)?scored[0].p.id:null;
-  return head+scored.map(function(o){
-    var star=o.score>=SIM_THRESH?'⭐ ':'';
-    var sel=(bestId===o.p.id)?' selected':'';
-    return '<option value="'+o.p.id+'"'+sel+'>'+star+esc(o.p.title)+'</option>';
-  }).join('');
-}
 function wrKindLabel(it){
   // "기획" 항목은 걸러진 뒤엔 항상 status가 "예정"이라, "기획 · 예정"보다
   // "기획완료 예정"이라고 한 문장처럼 붙여 써야 무슨 뜻인지 바로 읽힌다.
@@ -2033,12 +1887,11 @@ function isPlanSheetItem(it){return /^기획팀 일정시트/.test(it.week||'');
 function wrRowHtml(it){
   var key=wrKey(it);
   var kindCls=it.kind==='오픈'?'open':((it.kind==='리뷰'||it.kind==='검수')?'inspect':'');
-  var planSrc=isPlanSheetItem(it);
-  var canApply=!planSrc&&(it.kind==='오픈'||it.kind==='리뷰'||it.kind==='검수');
-  var noApplyMsg=planSrc?'기획팀 일정시트 항목은 확인용으로만 보여드려요. 웹디자인팀 타임라인이 기획팀 업무로 채워지지 않도록 타임라인에는 반영하지 않아요.':'기획 완료(예정)일은 타임라인의 특정 필드에 반영할 곳이 없어 정보 확인용으로만 보여드려요';
+  var canApply=it.kind==='오픈'||it.kind==='리뷰'||it.kind==='검수';
+  var target=it.kind==='리뷰'?'리뷰·피드백 일정':'오픈·검수';
   var applyCtl=canApply
-    ? '<select class="fi wr-proj" style="max-width:180px;display:inline-block">'+wrProjOptions(it.title)+'</select><button class="icbtn" data-act="wr-apply" data-key="'+esc(key)+'">반영</button>'
-    : '<span class="pn-sub" title="'+esc(noApplyMsg)+'">'+(planSrc?'참고용 항목이에요 (타임라인 미반영)':'직접 반영할 항목은 아니에요')+'</span>';
+    ? '<button class="icbtn" data-act="wr-apply" data-key="'+esc(key)+'" title="타임라인에는 올리지 않고 '+target+' KPI 목록에 '+esc(fmtMD(it.date))+' 일정으로 등록해요">반영 → '+target+'</button>'
+    : '<span class="pn-sub" title="기획 완료(예정)일은 반영할 KPI가 없어 확인용으로만 보여드려요">직접 반영할 항목은 아니에요</span>';
   var dismissTitle=canApply?'이 항목을 목록에서 치워요':'확인했으면 눌러서 목록에서 치워요 (반영할 곳은 없지만 계속 남아있지 않도록)';
   return '<div class="pn-row" style="flex-wrap:wrap">'
     +'<span class="kchip">'+esc(it.team)+' · '+esc(it.week)+'</span>'
@@ -2056,18 +1909,23 @@ document.addEventListener('click',function(e){
   if(!el)return;
   var act=el.dataset.act,type=el.dataset.type,id=el.dataset.id;
   if(act==='open-mail')openMailModal();
-  else if(act==='open-check')openCheckModal();
+  else if(act==='open-review')openReviewModal();
+  else if(act==='parse-review'){
+    var rtxt=$('#reviewTxt').value;
+    if(!rtxt.trim()){reviewCheckPreview([]);return;}
+    var rItems=parseReviewText(rtxt);
+    if(!rItems.length)toast('리뷰·피드백 일정을 찾지 못했어요. 직접 입력으로 이어갈게요');
+    reviewCheckPreview(rItems);
+  }
+  else if(act==='review-blank')reviewCheckPreview([]);
   else if(act==='parse-check'){
     var ctxt=$('#checkTxt').value;
-    if(!ctxt.trim()){toast('일정 체크 텍스트를 붙여넣어 주세요');return;}
-    var revItems=parseReviewMeetings(ctxt);
-    if(revItems.length){reviewCheckPreview(revItems);}
-    else{
-      var cItems=parseCheck(ctxt);
-      if(!cItems.length){toast('일정 형식을 찾지 못했어요. 직접 입력으로 이어갈게요');}
-      checkPreview(cItems);
-    }
+    if(!ctxt.trim()){checkPreview([]);return;}
+    var cItems=parseCheck(ctxt);
+    if(!cItems.length)toast('일정 형식을 찾지 못했어요. 직접 입력으로 이어갈게요');
+    checkPreview(cItems);
   }
+  else if(act==='check-blank')checkPreview([]);
   else if(act==='rvck-add'){$('#rvckRows').insertAdjacentHTML('beforeend',reviewCheckRowHtml(null));}
   else if(act==='rvck-del'){el.closest('.rvckrow').remove();}
   else if(act==='save-rvck'){
@@ -2132,24 +1990,7 @@ document.addEventListener('click',function(e){
   }
   else if(act==='wl-mode'){sb.ui.wl=el.dataset.mode;sbStore();renderWorkload();}
   else if(act==='open-rm')openRmModal();
-  else if(act==='add-manual')rmPreview({rm:'',url:'',title:'',tag:'디자인',owner:'',start:tISO(),end:tISO(),status:'진행',prio:'보통',biz:'기타'},null);
-  else if(act==='export')exportSbJson();
-  else if(act==='import')$('#sbImportFile').click();
-  else if(act==='share-push')sbRemotePush();
-  else if(act==='share-pull')sbRemoteLoad(true);
-  else if(act==='share-settings'){
-    if(SB_GAS_URL)openModal('<h3 class="mtitle">팀 공유 설정</h3>'
-      +'<p class="m-sub">구글 시트(Apps Script) 방식으로 동기화 중이에요.<br>토큰이나 별도 설정 없이 어떤 PC에서든 [팀 공유]·[팀 데이터 불러오기]를 바로 쓸 수 있어요.</p>'
-      +'<div class="factions"><button class="btn pri" data-act="modal-close">확인</button></div>');
-    else openTokenModal();
-  }
-  else if(act==='token-save'){
-    var tv=$('#ghTk').value.trim();
-    if(!tv){toast('토큰을 입력해 주세요');return;}
-    localStorage.setItem(SB_TOKEN_KEY,tv);
-    closeModal();sbRemotePush();
-  }
-  else if(act==='token-clear'){localStorage.removeItem(SB_TOKEN_KEY);closeModal();toast('토큰을 삭제했어요');}
+  else if(act==='add-manual')openCheckModal();
   else if(act==='modal-close')closeModal();
   else if(act==='sum-toggle'){selCard=(selCard===el.dataset.key?null:el.dataset.key);renderCards();}
   else if(act==='wr-refresh'){wrLoad(true);}
@@ -2163,27 +2004,21 @@ document.addEventListener('click',function(e){
   else if(act==='wr-apply'){
     var wit=wrItems.filter(function(x){return wrKey(x)===el.dataset.key;})[0];
     if(!wit)return;
-    if(isPlanSheetItem(wit)){toast('기획팀 일정시트 항목은 타임라인에 반영할 수 없어요 (참고용)');return;}
-    var row=el.closest('.pn-row');
-    var pid=row.querySelector('.wr-proj').value;
-    if(!pid){toast('반영할 타임라인을 먼저 선택해 주세요');return;}
-    var proj, isNew=false;
-    if(pid==='__new__'){
-      proj={id:uid('p'),title:wit.title||(wit.team+' '+wit.kind+' 일정'),biz:'',open:'',inspect:'',phases:[],reviews:[],done:false,reopen:false,issues:[]};
-      isNew=true;
-    }else{
-      proj=findProject(pid);
-    }
-    if(!proj)return;
-    if(wit.kind==='오픈'){proj.open=wit.date;toast(isNew?'새 타임라인을 만들고 오픈일을 반영했어요':'오픈일을 반영했어요');}
-    else if(wit.kind==='리뷰'){
-      proj.reviews=proj.reviews||[];
-      proj.reviews.push({id:uid('r'),title:wit.title||'리뷰 일정',date:wit.date,time:'',location:'',attendees:'',url:''});
-      toast(isNew?'새 타임라인을 만들고 리뷰 일정을 반영했어요':'리뷰 일정을 반영했어요');
-    }
-    else if(wit.kind==='검수'){proj.inspect=wit.date;toast(isNew?'새 타임라인을 만들고 검수일을 반영했어요':'검수일을 반영했어요');}
-    if(isNew)sb.projects.push(proj);
+    var wtitle=wit.title||(wit.team+' '+wit.kind+' 일정');
+    if(wit.kind==='리뷰'){
+      sb.reviews=sb.reviews||[];
+      sb.reviews.push({id:uid('r'),title:wtitle,date:wit.date,time:'',location:'',attendees:''});
+      toast('리뷰·피드백 일정 KPI에 '+fmtMD(wit.date)+' 일정으로 올렸어요');
+    }else if(wit.kind==='오픈'||wit.kind==='검수'){
+      sb.milestones=sb.milestones||[];
+      sb.milestones.push({id:uid('m'),title:wtitle,kind:wit.kind,date:wit.date,team:wit.team||''});
+      toast('오픈·검수 KPI에 '+wit.kind+' '+fmtMD(wit.date)+' 일정으로 올렸어요');
+    }else return;
     wrSeenMap()[el.dataset.key]=1;
+    sbSave();renderSbAll();
+  }
+  else if(act==='ms-del'){
+    sb.milestones=(sb.milestones||[]).filter(function(m){return m.id!==el.dataset.id;});
     sbSave();renderSbAll();
   }
   else if(act==='leg-toggle'){var m=sbMember(el.dataset.name);if(m){m.visible=!m.visible;sbSave();renderLegend();renderWorkload();}}
@@ -2300,8 +2135,6 @@ document.addEventListener('click',function(e){
     cleanupChains();sbSave();renderSbAll();closeModal();
   }
 });
-$('#sbSoloChk').addEventListener('change',function(){sb.ui.solo=this.checked;sbSave();renderSbTimeline();});
-$('#sbImportFile').addEventListener('change',function(){if(this.files[0])importSbJson(this.files[0]);this.value='';});
 document.getElementById('sb-overlay').addEventListener('mousedown',function(e){sbDownOnOverlay=(e.target.id==='sb-overlay');});
 document.getElementById('kwmovl').addEventListener('mousedown',function(e){kwDownOnOvl=(e.target===document.getElementById('kwmovl'));});
 
@@ -2474,13 +2307,8 @@ document.addEventListener('keydown',function(e){
 });
 
 /* ══════════════ 초기화 ══════════════ */
-// 팀 공유 도입 전 로컬 데이터(타임스탬프 없음)는 지금 시각으로 보존해 원격이 덮어쓰지 않게 함
-if(!sb.updatedAt&&!sb._seed&&(sb.projects.length||sb.tasks.length)){
-  sb.updatedAt=new Date().toISOString();sbStore();setSbDirty(true);
-}
+localStorage.removeItem('wdsb_gh_token');localStorage.removeItem('wdsb_dirty');
 renderSbAll();
-syncStatus();
-sbRemoteLoad(false);
 wrLoad(false);
 </script>
 </body>
