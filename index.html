@@ -66,6 +66,12 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
 #pg-db{padding:1.5rem;max-width:1100px;margin:0 auto}
 .dbtop{display:flex;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap;gap:12px}
 .hbtns{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.syncchip{margin-left:auto;font-size:12.5px;font-family:var(--font);color:var(--text3);background:var(--white);border:1px solid var(--border);border-radius:20px;padding:5px 12px;cursor:pointer}
+.syncchip:empty{display:none}
+.syncchip.ok{color:var(--green);border-color:#BBF7D0}
+.syncchip.pending,.syncchip.saving{color:var(--text2)}
+.syncchip.viewdirty,.syncchip.offline{color:var(--amber);border-color:#FDE68A}
+.syncchip.error{color:var(--red);border-color:#FECACA}
 
 .sec{background:var(--white);border:1px solid var(--border);border-radius:14px;padding:1.1rem 1.25rem;margin-bottom:1rem}
 .sechd{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:10px}
@@ -355,6 +361,8 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
   .kwgrid{grid-template-columns:1fr}
   .fgrid{grid-template-columns:1fr}
   .gtab span{display:none}
+  .sectitle{flex-wrap:wrap;white-space:nowrap;row-gap:6px}
+  .syncchip{margin-left:0}
 }
 </style>
 </head>
@@ -380,6 +388,7 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
       <button class="btn tl" data-act="open-review"><i class="ti ti-message-circle"></i> 리뷰·피드백 일정</button>
       <button class="btn" data-act="add-manual"><i class="ti ti-plus"></i> 직접 추가</button>
     </div>
+    <button class="syncchip" id="sbSync" data-act="sync-chip" title="외부·모바일 공유 상태"></button>
   </div>
 
   <div class="kpi-row" id="sbCards"></div>
@@ -560,7 +569,7 @@ function loadSbState(){
 }
 function sbBlank(){return {members:JSON.parse(JSON.stringify(DEFAULT_MEMBERS)),projects:[],tasks:[],reviews:[],milestones:[],vacations:[],ui:{},updatedAt:''};}
 function sbStore(){localStorage.setItem(SB_LS,JSON.stringify(sb));}
-function sbSave(){delete sb._seed;sb.updatedAt=new Date().toISOString();sbStore();}
+function sbSave(){delete sb._seed;sb.updatedAt=new Date().toISOString();sbStore();scheduleSyncPush();}
 function sbSeed(){
   var s=sbBlank();
   s._seed=true;
@@ -1858,6 +1867,126 @@ function doDelete(type,id){
   sbSave();renderSbAll();toast('삭제했어요');
 }
 
+/* ══════════════ 외부·모바일 공유 ══════════════
+   공유 토큰이 설정된 기기에서 저장할 때마다 저장소 board-data 브랜치의 board-data.json으로
+   자동 업로드하고, 다른 기기(모바일 LTE 포함)는 열 때마다 그 파일을 읽어온다(읽기는 토큰 불필요).
+   main이 아닌 별도 브랜치라 저장해도 GitHub Pages가 다시 배포되지 않는다.
+   토큰 없는 기기는 보기 전용 — 항상 공유 데이터를 그대로 보여준다. */
+var SYNC_REPO='soullim/WebDesignTEAM',SYNC_BRANCH='board-data',SYNC_FILE='board-data.json';
+var SYNC_TOKEN_KEY='wdsb_sync_token',SYNC_STAMP_KEY='wdsb_synced';
+var syncTimer=null,syncBusy=false,syncAgain=false;
+function syncToken(){return localStorage.getItem(SYNC_TOKEN_KEY)||'';}
+function syncedStamp(){return localStorage.getItem(SYNC_STAMP_KEY)||'';}
+function setSynced(s){localStorage.setItem(SYNC_STAMP_KEY,s||'');}
+function localDirty(){return !sb._seed&&!!sb.updatedAt&&sb.updatedAt!==syncedStamp();}
+function fmtStamp(s){if(!s)return'';var d=new Date(s);return (d.getMonth()+1)+'/'+d.getDate()+' '+pad(d.getHours())+':'+pad(d.getMinutes());}
+function syncUrl(q){return 'https://api.github.com/repos/'+SYNC_REPO+'/contents/'+SYNC_FILE+(q||'');}
+function setSyncState(s,msg){
+  var el=document.getElementById('sbSync');if(!el)return;
+  var text={
+    view:'☁ 보기 전용 · 공유 데이터 표시 중',
+    viewdirty:'☁ 보기 전용 — 이 기기에서 고친 내용은 공유되지 않아요',
+    pending:'☁ 공유 저장 대기…',
+    saving:'☁ 공유 저장 중…',
+    ok:'☁ 외부·모바일 공유됨'+(syncedStamp()?' · '+fmtStamp(syncedStamp()):''),
+    offline:'☁ 공유 데이터에 연결하지 못했어요 (이 기기 데이터 표시 중)',
+    error:'☁ 공유 실패'+(msg?' — '+msg:'')+' · 눌러서 다시 시도'
+  }[s]||'';
+  el.textContent=text;el.className='syncchip '+s;el.dataset.state=s;
+}
+async function syncFetchRemote(){
+  var h={Accept:'application/vnd.github.raw+json'},tk=syncToken();
+  if(tk)h.Authorization='Bearer '+tk;
+  try{
+    var r=await fetch(syncUrl('?ref='+SYNC_BRANCH+'&t='+Date.now()),{cache:'no-store',headers:h});
+    if(r.status===404)return {missing:true};
+    if(r.ok)return {data:await r.json()};
+  }catch(e){}
+  // API 호출 한도 초과 등으로 실패하면 raw 파일로 대신 읽는다(몇 분 늦을 수 있음)
+  try{
+    var r2=await fetch('https://raw.githubusercontent.com/'+SYNC_REPO+'/'+SYNC_BRANCH+'/'+SYNC_FILE+'?t='+Date.now(),{cache:'no-store'});
+    if(r2.status===404)return {missing:true};
+    if(r2.ok)return {data:await r2.json()};
+  }catch(e){}
+  return {error:true};
+}
+function adoptRemote(remote){sb=remote;sbStore();setSynced(remote.updatedAt||'');renderSbAll();}
+async function syncPull(){
+  var tk=syncToken();
+  var res=await syncFetchRemote();
+  if(res.error){setSyncState('offline');return;}
+  if(res.missing||!res.data||!res.data.members){
+    if(tk&&localDirty())syncPushNow();else setSyncState(tk?'ok':'view');
+    return;
+  }
+  var remote=res.data,changed=(remote.updatedAt||'')!==syncedStamp();
+  if(!tk){
+    if(changed||localDirty())adoptRemote(remote);
+    setSyncState('view');return;
+  }
+  if(changed){
+    if(localDirty()&&!confirm('다른 기기에서 저장한 최신 데이터가 있어요.\n\n[확인] 최신 데이터 불러오기 (이 기기의 공유 안 된 변경은 사라져요)\n[취소] 이 기기 데이터로 공유 데이터 덮어쓰기')){syncPushNow(true);return;}
+    adoptRemote(remote);setSyncState('ok');return;
+  }
+  if(localDirty())syncPushNow();else setSyncState('ok');
+}
+function scheduleSyncPush(){
+  if(!syncToken()){setSyncState('viewdirty');return;}
+  setSyncState('pending');
+  clearTimeout(syncTimer);
+  syncTimer=setTimeout(function(){syncPushNow();},1500);
+}
+async function syncPushNow(force){
+  var tk=syncToken();if(!tk)return;
+  clearTimeout(syncTimer);
+  if(syncBusy){syncAgain=true;return;}
+  syncBusy=true;setSyncState('saving');
+  try{
+    var h={Accept:'application/vnd.github+json',Authorization:'Bearer '+tk},sha=null;
+    var meta=await fetch(syncUrl('?ref='+SYNC_BRANCH+'&t='+Date.now()),{cache:'no-store',headers:h});
+    if(meta.ok){
+      var mj=await meta.json();sha=mj.sha;
+      var cur=null;
+      try{cur=JSON.parse(decodeURIComponent(escape(atob(String(mj.content||'').replace(/\n/g,'')))));}catch(e){}
+      // 마지막으로 맞춘 뒤 다른 기기가 먼저 저장했다면 덮어쓰기 전에 물어본다
+      if(!force&&cur&&cur.updatedAt&&cur.updatedAt!==syncedStamp()){
+        syncBusy=false;
+        if(confirm('다른 기기에서 먼저 저장한 데이터가 있어요.\n\n[확인] 이 기기 내용으로 덮어쓰기\n[취소] 최신 데이터 불러오기 (이 기기의 공유 안 된 변경은 사라져요)'))return syncPushNow(true);
+        adoptRemote(cur);setSyncState('ok');return;
+      }
+    }else if(meta.status===401)throw new Error('토큰이 유효하지 않아요');
+    else if(meta.status===403)throw new Error('토큰에 저장소 쓰기 권한이 없어요');
+    else if(meta.status!==404)throw new Error('HTTP '+meta.status);
+    var body={message:'일정보드 데이터 저장 ('+tISO()+')',branch:SYNC_BRANCH,content:btoa(unescape(encodeURIComponent(JSON.stringify(sb))))};
+    if(sha)body.sha=sha;
+    var r=await fetch(syncUrl(),{method:'PUT',headers:Object.assign({'Content-Type':'application/json'},h),body:JSON.stringify(body)});
+    if(!r.ok){
+      if(r.status===401)throw new Error('토큰이 유효하지 않아요');
+      if(r.status===403||r.status===404)throw new Error('토큰에 저장소 쓰기 권한이 없어요');
+      if(r.status===409||r.status===422)throw new Error('다른 기기와 동시에 저장됐어요');
+      throw new Error('HTTP '+r.status);
+    }
+    setSynced(sb.updatedAt||'');setSyncState('ok');
+  }catch(e){setSyncState('error',e.message);}
+  syncBusy=false;
+  if(syncAgain){syncAgain=false;syncPushNow();}
+}
+function openSyncModal(){
+  var tk=syncToken();
+  openModal('<h3 class="mtitle">외부·모바일 공유 설정</h3>'
+    +'<p class="m-sub">일정을 입력하는 PC에서 한 번만 토큰을 넣어두면, 저장할 때마다 자동으로 공유돼요. 휴대폰(LTE)이나 다른 PC에서는 아무 설정 없이 '
+    +'<b>soullim.github.io/WebDesignTEAM</b> 을 열기만 하면 최신 일정이 보여요(보기 전용).</p>'
+    +'<div class="note" style="margin-bottom:10px">토큰 발급: GitHub → Settings → Developer settings → <b>Fine-grained tokens</b> → Generate new token<br>'
+    +'· Repository access: <b>Only select repositories → WebDesignTEAM</b><br>'
+    +'· Permissions → Contents: <b>Read and write</b><br>'
+    +'토큰은 이 브라우저에만 저장돼요. 저장소가 공개라 공유된 일정은 주소를 아는 누구나 볼 수 있어요.</div>'
+    +'<div class="fld full"><label>GitHub 토큰</label><input class="fi" id="syncTk" type="password" value="'+esc(tk)+'" placeholder="github_pat_..."></div>'
+    +'<div class="factions">'
+    +(tk?'<button class="btn" data-act="sync-token-clear">이 기기 토큰 삭제</button>':'')
+    +'<button class="btn" data-act="modal-close">닫기</button>'
+    +'<button class="btn pri" data-act="sync-token-save">저장</button></div>');
+}
+
 /* ══════════════ 주간보고 연동 ══════════════
    IT부문 주간업무 보고 시트의 리뷰일·오픈일 후보를, 깃허브 액션이 주기적으로
    Apps Script에서 대신 읽어와 이 저장소의 wr-data.json 파일로 저장해둔다.
@@ -2016,6 +2145,14 @@ document.addEventListener('click',function(e){
   else if(act==='wl-mode'){sb.ui.wl=el.dataset.mode;sbStore();renderWorkload();}
   else if(act==='open-rm')openRmModal();
   else if(act==='add-manual')openCheckModal();
+  else if(act==='sync-chip'){if(el.dataset.state==='error')syncPushNow();else openSyncModal();}
+  else if(act==='sync-token-save'){
+    var stk=$('#syncTk').value.trim();
+    if(!stk){toast('토큰을 입력해 주세요');return;}
+    localStorage.setItem(SYNC_TOKEN_KEY,stk);
+    closeModal();toast('공유 설정을 저장했어요');syncPull();
+  }
+  else if(act==='sync-token-clear'){localStorage.removeItem(SYNC_TOKEN_KEY);closeModal();toast('이 기기의 토큰을 삭제했어요');syncPull();}
   else if(act==='modal-close')closeModal();
   else if(act==='sum-toggle'){selCard=(selCard===el.dataset.key?null:el.dataset.key);renderCards();}
   else if(act==='wr-refresh'){wrLoad(true);}
@@ -2353,6 +2490,8 @@ document.addEventListener('keydown',function(e){
 /* ══════════════ 초기화 ══════════════ */
 localStorage.removeItem('wdsb_gh_token');localStorage.removeItem('wdsb_dirty');
 renderSbAll();
+setSyncState(syncToken()?(localDirty()?'pending':'ok'):'view');
+syncPull();
 wrLoad(false);
 </script>
 </body>
