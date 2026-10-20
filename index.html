@@ -191,6 +191,8 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
 .dist-cnt{font-size:11.5px;color:var(--text3)}
 .dist-cnt b{color:var(--text2)}
 .dist-copy1{padding:1px 6px;margin-left:2px;font-size:11px;color:var(--accent)}
+.copybox{display:inline-flex;align-items:center;gap:2px}
+.copybox .copyrange{width:auto;max-width:270px;padding:5px 8px;font-size:13px;border-radius:8px}
 .dist-days{flex:1;display:grid}
 .dist-days span{font-size:10.5px;color:var(--text3);text-align:center;padding:5px 0;font-weight:600}
 .dist-days span.wkend{color:var(--red);opacity:.55}
@@ -405,7 +407,7 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
       </span></span>
       <div class="calnav">
         <div class="wl-toggle"><button id="wlDist" data-act="wl-mode" data-mode="dist">팀원별</button><button id="wlCal" data-act="wl-mode" data-mode="cal">달력</button></div>
-        <button class="btn ghost" data-act="dist-copy" title="보고 있는 달의 업무를 팀원별로 묶어 복사해요">📋 전체 복사</button>
+        <span class="copybox"><select class="fi copyrange" id="sbCopyRange" title="복사할 기간 (월~일 기준 주차)"></select><button class="btn ghost" data-act="dist-copy" title="고른 기간의 업무를 팀원별로 묶어 복사해요">📋 전체 복사</button></span>
         <button class="btn ghost" data-act="vac-open">+ 연차 관리</button>
       </div>
     </div>
@@ -1514,7 +1516,7 @@ function renderDist(){
     }).join('');
     html+='<div class="dist-row"><div class="dist-side">'+miniPill(m.name)
       +'<span class="dist-cnt">이번 달 <b>'+mine.length+'건</b> · 오늘 '+going+'건 진행'
-      +(mine.length?' <button class="icbtn dist-copy1" data-act="dist-copy" data-member="'+esc(m.name)+'" title="'+esc(m.name)+'의 이번 달 업무 목록 복사">복사</button>':'')+'</span></div>'
+      +(mine.length?' <button class="icbtn dist-copy1" data-act="dist-copy" data-member="'+esc(m.name)+'" title="'+esc(m.name)+'의 업무를 위에서 고른 기간으로 복사">복사</button>':'')+'</span></div>'
       +'<div class="dist-grid" style="'+cols+'">'
       +'<div class="dist-cols" style="'+cols+'">'+colBg+'</div>'
       +(vacBg?'<div class="dist-vacbg" style="'+cols+'">'+vacBg+'</div>':'')
@@ -1531,12 +1533,44 @@ function renderWorkload(){
   $('#sbDist').hidden=mode!=='dist';
   $('#sbCal').hidden=mode!=='cal';
   if(mode==='cal')renderCal();else renderDist();
+  renderCopyRange();
 }
-/* 팀 업무 분포 복사 — 보고 있는 달과 겹치는 업무를
+/* 팀 업무 분포 복사 — 고른 기간(주차 또는 월 전체)과 겹치는 업무를
    "업무명(#번호)(시작~끝) - 완료/진행중/예정" 형식으로 팀원별로 묶어 클립보드에 담는다.
-   범례에서 꺼둔 팀원과 연차는 빠지고, 레드마인 번호가 없으면 (#번호) 부분만 생략한다. */
+   범례에서 꺼둔 팀원과 연차는 빠지고, 레드마인 번호가 없으면 (#번호) 부분만 생략한다.
+   주차는 월~일 기준이고, 달 경계에 걸친 주는 그 주 전체(이전·다음 달 날짜 포함)를 본다. */
+var copyRangeVal='';
+function copyWeeks(){
+  var first=new Date(calY,calM,1),last=new Date(calY,calM+1,0);
+  var mon=addD(first,-((first.getDay()+6)%7)),out=[],n=1;
+  while(mon<=last){
+    var sun=addD(mon,6);
+    out.push({val:'w'+iso(mon),s:iso(mon),e:iso(sun),label:(calM+1)+'월 '+n+'주차',sub:fmtMD(iso(mon))+'~'+fmtMD(iso(sun))});
+    mon=addD(mon,7);n++;
+  }
+  return out;
+}
+function copyRanges(){
+  return copyWeeks().concat([{val:'m',s:iso(new Date(calY,calM,1)),e:iso(new Date(calY,calM+1,0)),label:(calM+1)+'월 전체',sub:''}]);
+}
+function currentCopyRange(){
+  var rs=copyRanges();
+  return rs.filter(function(r){return r.val===copyRangeVal;})[0]||rs[rs.length-1];
+}
+function renderCopyRange(){
+  var sel=$('#sbCopyRange');if(!sel)return;
+  var rs=copyRanges(),t=tISO();
+  if(!rs.some(function(r){return r.val===copyRangeVal;})){
+    var thisWeek=rs.filter(function(r){return r.val!=='m'&&r.s<=t&&t<=r.e;})[0];
+    copyRangeVal=thisWeek?thisWeek.val:rs[0].val;
+  }
+  sel.innerHTML=rs.map(function(r){
+    var now=r.val!=='m'&&r.s<=t&&t<=r.e;
+    return '<option value="'+r.val+'"'+(r.val===copyRangeVal?' selected':'')+'>'+r.label+(r.sub?' ('+r.sub+')':'')+(now?' · 이번 주':'')+'</option>';
+  }).join('');
+}
 function distCopyLines(member){
-  var mS=iso(new Date(calY,calM,1)),mE=iso(new Date(calY,calM+1,0)),t=tISO();
+  var rg=currentCopyRange(),mS=rg.s,mE=rg.e,t=tISO();
   var rows=[];
   function status(done,start){return done?'완료':(start>t?'예정':'진행중');}
   sb.tasks.forEach(function(tk){
@@ -1573,12 +1607,12 @@ function copyText(text){
   });
 }
 function distCopy(member){
-  var groups=distCopyLines(member);
+  var groups=distCopyLines(member),rg=currentCopyRange();
   var n=groups.reduce(function(a,g){return a+g.lines.length;},0);
-  if(!n){toast((calM+1)+'월에 복사할 업무가 없어요');return;}
+  if(!n){toast(rg.label+'에 복사할 '+(member?member+'의 ':'')+'업무가 없어요');return;}
   var text=member?groups[0].lines.join('\n'):groups.map(function(g){return '['+g.name+']\n'+g.lines.join('\n');}).join('\n\n');
   copyText(text).then(function(){
-    toast((member?member+' ':'')+(calM+1)+'월 업무 '+n+'건을 복사했어요');
+    toast((member?member+' ':'')+rg.label+(rg.sub?'('+rg.sub+')':'')+' 업무 '+n+'건을 복사했어요');
   },function(){
     openModal('<h3 class="mtitle">업무 목록</h3><p class="m-sub">자동 복사가 막혀 있어요. 아래 내용을 전체 선택(Ctrl+A) 후 복사(Ctrl+C)해 주세요.</p>'
       +'<textarea class="fi" style="min-height:240px" readonly>'+esc(text)+'</textarea>'
@@ -2374,6 +2408,7 @@ document.addEventListener('click',function(e){
     cleanupChains();sbSave();renderSbAll();closeModal();
   }
 });
+document.getElementById('sbCopyRange').addEventListener('change',function(){copyRangeVal=this.value;});
 document.getElementById('sb-overlay').addEventListener('mousedown',function(e){sbDownOnOverlay=(e.target.id==='sb-overlay');});
 document.getElementById('kwmovl').addEventListener('mousedown',function(e){kwDownOnOvl=(e.target===document.getElementById('kwmovl'));});
 
