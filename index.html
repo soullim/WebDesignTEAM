@@ -190,6 +190,7 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
 .dist-side{flex:0 0 150px;padding:9px 10px;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:4px;align-items:flex-start;justify-content:center}
 .dist-cnt{font-size:11.5px;color:var(--text3)}
 .dist-cnt b{color:var(--text2)}
+.dist-copy1{padding:1px 6px;margin-left:2px;font-size:11px;color:var(--accent)}
 .dist-days{flex:1;display:grid}
 .dist-days span{font-size:10.5px;color:var(--text3);text-align:center;padding:5px 0;font-weight:600}
 .dist-days span.wkend{color:var(--red);opacity:.55}
@@ -404,6 +405,7 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
       </span></span>
       <div class="calnav">
         <div class="wl-toggle"><button id="wlDist" data-act="wl-mode" data-mode="dist">팀원별</button><button id="wlCal" data-act="wl-mode" data-mode="cal">달력</button></div>
+        <button class="btn ghost" data-act="dist-copy" title="보고 있는 달의 업무를 팀원별로 묶어 복사해요">📋 전체 복사</button>
         <button class="btn ghost" data-act="vac-open">+ 연차 관리</button>
       </div>
     </div>
@@ -1511,7 +1513,8 @@ function renderDist(){
       return '<span'+(single?' class="vac-dot"':'')+' style="grid-column:'+si+'/'+(ei+1)+'" data-act="vac-open" title="'+tip+'"></span>';
     }).join('');
     html+='<div class="dist-row"><div class="dist-side">'+miniPill(m.name)
-      +'<span class="dist-cnt">이번 달 <b>'+mine.length+'건</b> · 오늘 '+going+'건 진행</span></div>'
+      +'<span class="dist-cnt">이번 달 <b>'+mine.length+'건</b> · 오늘 '+going+'건 진행'
+      +(mine.length?' <button class="icbtn dist-copy1" data-act="dist-copy" data-member="'+esc(m.name)+'" title="'+esc(m.name)+'의 이번 달 업무 목록 복사">복사</button>':'')+'</span></div>'
       +'<div class="dist-grid" style="'+cols+'">'
       +'<div class="dist-cols" style="'+cols+'">'+colBg+'</div>'
       +(vacBg?'<div class="dist-vacbg" style="'+cols+'">'+vacBg+'</div>':'')
@@ -1528,6 +1531,60 @@ function renderWorkload(){
   $('#sbDist').hidden=mode!=='dist';
   $('#sbCal').hidden=mode!=='cal';
   if(mode==='cal')renderCal();else renderDist();
+}
+/* 팀 업무 분포 복사 — 보고 있는 달과 겹치는 업무를
+   "업무명(#번호)(시작~끝) - 완료/진행중/예정" 형식으로 팀원별로 묶어 클립보드에 담는다.
+   범례에서 꺼둔 팀원과 연차는 빠지고, 레드마인 번호가 없으면 (#번호) 부분만 생략한다. */
+function distCopyLines(member){
+  var mS=iso(new Date(calY,calM,1)),mE=iso(new Date(calY,calM+1,0)),t=tISO();
+  var rows=[];
+  function status(done,start){return done?'완료':(start>t?'예정':'진행중');}
+  sb.tasks.forEach(function(tk){
+    if(!tk.start||!tk.end||tk.end<mS||tk.start>mE)return;
+    rows.push({owner:tk.owner,title:tk.title+(tk.round?' '+tk.round:''),rm:tk.rm,s:tk.start,e:tk.end,st:status(tk.done,tk.start)});
+  });
+  sb.projects.forEach(function(p){
+    p.phases.forEach(function(ph){
+      if(!ph.start||!ph.end||ph.end<mS||ph.start>mE)return;
+      rows.push({owner:ph.owner,title:p.title+' · '+ph.name,rm:ph.rm,s:ph.start,e:ph.end,st:status(p.done,ph.start)});
+    });
+  });
+  var mems=sb.members.filter(function(m){return m.visible&&(!member||m.name===member);});
+  var groups=[];
+  mems.forEach(function(m){
+    var mine=rows.filter(function(r){return sbMember(r.owner)===m;}).sort(function(a,b){return a.s<b.s?-1:(a.s>b.s?1:(a.e<b.e?-1:1));});
+    if(!mine.length)return;
+    groups.push({name:m.name,lines:mine.map(function(r){
+      var range=r.s===r.e?fmtMD(r.s):fmtMD(r.s)+'~'+fmtMD(r.e);
+      return r.title+(r.rm?'(#'+r.rm+')':'')+'('+range+') - '+r.st;
+    })});
+  });
+  return groups;
+}
+function copyText(text){
+  if(navigator.clipboard&&window.isSecureContext)return navigator.clipboard.writeText(text);
+  return new Promise(function(resolve,reject){
+    var ta=document.createElement('textarea');
+    ta.value=text;ta.setAttribute('readonly','');ta.style.position='fixed';ta.style.opacity='0';
+    document.body.appendChild(ta);ta.select();
+    var ok=false;try{ok=document.execCommand('copy');}catch(e){}
+    document.body.removeChild(ta);
+    ok?resolve():reject();
+  });
+}
+function distCopy(member){
+  var groups=distCopyLines(member);
+  var n=groups.reduce(function(a,g){return a+g.lines.length;},0);
+  if(!n){toast((calM+1)+'월에 복사할 업무가 없어요');return;}
+  var text=member?groups[0].lines.join('\n'):groups.map(function(g){return '['+g.name+']\n'+g.lines.join('\n');}).join('\n\n');
+  copyText(text).then(function(){
+    toast((member?member+' ':'')+(calM+1)+'월 업무 '+n+'건을 복사했어요');
+  },function(){
+    openModal('<h3 class="mtitle">업무 목록</h3><p class="m-sub">자동 복사가 막혀 있어요. 아래 내용을 전체 선택(Ctrl+A) 후 복사(Ctrl+C)해 주세요.</p>'
+      +'<textarea class="fi" style="min-height:240px" readonly>'+esc(text)+'</textarea>'
+      +'<div class="factions"><button class="btn pri" data-act="modal-close">닫기</button></div>');
+    var ta=document.querySelector('#sb-mbox textarea');if(ta){ta.focus();ta.select();}
+  });
 }
 function renderSbAll(){renderTodayBox();renderLegend();renderCards();renderSbTimeline();renderWorkload();}
 
@@ -2142,6 +2199,7 @@ document.addEventListener('click',function(e){
     cleanupChains();sbSave();renderSbAll();closeModal();
     toast(made.length+'건 등록했어요 — 레드마인 등록되면 번호만 채워 주세요');
   }
+  else if(act==='dist-copy')distCopy(el.dataset.member||'');
   else if(act==='wl-mode'){sb.ui.wl=el.dataset.mode;sbStore();renderWorkload();}
   else if(act==='open-rm')openRmModal();
   else if(act==='add-manual')openCheckModal();
