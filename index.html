@@ -145,6 +145,11 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
 .dp-url{font-size:12.5px;color:var(--accent);word-break:break-all;text-decoration:none}
 .dp-url:hover{text-decoration:underline}
 .dp-empty{padding:18px 4px;color:var(--text3);font-size:14px}
+.dp-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.dp-bar .dp-mon{font-family:var(--ftitle);font-size:15px;font-weight:800;color:var(--text);min-width:92px;text-align:center}
+.dp-bar .dp-sum{font-size:12.5px;color:var(--text3)}
+.dp-bar .dp-right{margin-left:auto;display:flex;align-items:center;gap:6px}
+.dp-bar select.fi{width:auto;padding:5px 8px;font-size:12.5px}
 .icbtn{font-size:12px;color:var(--text3);padding:4px 8px;border-radius:7px;border:none;background:none;font-family:var(--font);cursor:pointer}
 .icbtn:hover{background:var(--white);color:var(--text)}
 .bar{display:flex;height:30px;border-radius:8px;overflow:hidden;font-size:12px;font-weight:600}
@@ -169,7 +174,7 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
 /* 담당자 워크로드 달력 */
 .cal-wrap{background:var(--white);border:1px solid var(--border);border-radius:14px;overflow:hidden}
 .calnav{display:flex;align-items:center;gap:4px}
-.calnav .nbtn{font-size:16px;padding:4px 10px;border-radius:8px;color:var(--text3);border:none;background:none;font-family:var(--font);cursor:pointer}
+.calnav .nbtn,.dp-bar .nbtn{font-size:16px;padding:4px 10px;border-radius:8px;color:var(--text3);border:none;background:none;font-family:var(--font);cursor:pointer}
 .calnav .nbtn:hover{background:var(--bg2)}
 .calnav span{font-family:var(--ftitle);font-weight:700;font-size:14.5px;min-width:96px;text-align:center;display:inline-block}
 .cal-dow{display:grid;grid-template-columns:repeat(7,1fr);background:var(--bg2);font-size:12px;color:var(--text3);text-align:center;padding:7px 0;border-bottom:1px solid var(--border)}
@@ -435,7 +440,7 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
 
   <div class="sec">
     <div class="sechd">
-      <span class="sectitle"><i class="ti ti-rocket"></i> 퍼블 배포 리스트<span class="ssub">작성일별로 쌓여요</span></span>
+      <span class="sectitle"><i class="ti ti-rocket"></i> 퍼블 배포 리스트<span class="ssub">월별·작성일별로 쌓여요</span></span>
       <div class="calnav"><button class="btn ghost" data-act="dp-new">+ 배포 추가</button></div>
     </div>
     <div id="sbDeploy"></div>
@@ -1801,7 +1806,7 @@ function reviewCheckPreview(items){
 /* 퍼블 배포 리스트 — 작성일별로 "1. 제목 / 레드마인 링크" 형식으로 쌓는다.
    추가/수정 모두 같은 형식의 텍스트를 붙여넣거나 적는 방식이라 입력이 가볍고,
    [복사]하면 같은 형식 그대로 메일·메신저에 붙여넣을 수 있다. */
-var dpShowAll=false,DP_RECENT=5;
+var dpMonth='';
 function dpList(){return sb.deploys||(sb.deploys=[]);}
 function dpDates(){
   var seen={},out=[];
@@ -1832,24 +1837,44 @@ function dpParse(txt){
     return it;
   });
 }
+function dpMonthOf(date){return String(date||'').slice(0,7);}
+function dpMonthLabel(ym){return (+ym.slice(0,4))+'년 '+(+ym.slice(5,7))+'월';}
+function dpShiftMonth(ym,n){var y=+ym.slice(0,4),m=+ym.slice(5,7)-1+n;y+=Math.floor(m/12);m=((m%12)+12)%12;return y+'-'+(m<9?'0':'')+(m+1);}
+function dpDayHtml(date){
+  var items=dpItems(date),t=tISO();
+  var today=date===t?'<span class="dchip open">오늘</span>':'';
+  return '<div class="dp-day"><div class="dp-dayhd">'+dpDayLabel(date)+today+'<span class="dp-cnt">'+items.length+'건</span>'
+    +'<span class="dp-acts"><button class="icbtn" data-act="dp-copy" data-date="'+date+'" title="이 날짜 목록을 같은 형식으로 복사해요">📋 복사</button>'
+    +'<button class="icbtn" data-act="dp-edit" data-date="'+date+'">수정</button></span></div>'
+    +items.map(function(it,i){
+      var link=it.url?'<a class="dp-url" href="'+esc(it.url)+'" target="_blank" rel="noopener">'+esc(it.url)+'</a>':'';
+      return '<div class="dp-item"><span class="dp-no">'+(i+1)+'.</span><span class="dp-body"><span>'+esc(it.title)+'</span>'+link+'</span></div>';
+    }).join('')+'</div>';
+}
 function renderDeploy(){
   var box=$('#sbDeploy');if(!box)return;
-  var dates=dpDates(),t=tISO();
-  if(!dates.length){box.innerHTML='<div class="dp-empty">아직 적은 배포가 없어요. [+ 배포 추가]에서 오늘 배포한 건을 적어 두세요.</div>';return;}
-  var shown=dpShowAll?dates:dates.slice(0,DP_RECENT);
-  var html=shown.map(function(date){
-    var items=dpItems(date);
-    var today=date===t?'<span class="dchip open">오늘</span>':'';
-    return '<div class="dp-day"><div class="dp-dayhd">'+dpDayLabel(date)+today+'<span class="dp-cnt">'+items.length+'건</span>'
-      +'<span class="dp-acts"><button class="icbtn" data-act="dp-copy" data-date="'+date+'" title="이 날짜 목록을 같은 형식으로 복사해요">📋 복사</button>'
-      +'<button class="icbtn" data-act="dp-edit" data-date="'+date+'">수정</button></span></div>'
-      +items.map(function(it,i){
-        var link=it.url?'<a class="dp-url" href="'+esc(it.url)+'" target="_blank" rel="noopener">'+esc(it.url)+'</a>':'';
-        return '<div class="dp-item"><span class="dp-no">'+(i+1)+'.</span><span class="dp-body"><span>'+esc(it.title)+'</span>'+link+'</span></div>';
-      }).join('')+'</div>';
+  var cur=dpMonthOf(tISO());
+  if(!dpMonth)dpMonth=cur;
+  var all=dpDates();
+  var dates=all.filter(function(d){return dpMonthOf(d)===dpMonth;});
+  var cnt=dates.reduce(function(a,d){return a+dpItems(d).length;},0);
+  // 기록이 있는 달 + 이번 달 + 지금 보고 있는 달을 바로가기 목록으로
+  var months={};months[cur]=0;months[dpMonth]=months[dpMonth]||0;
+  all.forEach(function(d){var ym=dpMonthOf(d);months[ym]=(months[ym]||0)+dpItems(d).length;});
+  var opts=Object.keys(months).sort().reverse().map(function(ym){
+    return '<option value="'+ym+'"'+(ym===dpMonth?' selected':'')+'>'+dpMonthLabel(ym)+(months[ym]?' · '+months[ym]+'건':'')+'</option>';
   }).join('');
-  if(dates.length>DP_RECENT)html+='<button class="icbtn" data-act="dp-toggle">'+(dpShowAll?'최근 '+DP_RECENT+'일만 보기':'이전 배포 보기 ('+(dates.length-DP_RECENT)+'일)')+'</button>';
-  box.innerHTML=html;
+  var bar='<div class="dp-bar">'
+    +'<button class="nbtn" data-act="dp-month" data-step="-1" aria-label="이전 달">‹</button>'
+    +'<span class="dp-mon">'+dpMonthLabel(dpMonth)+'</span>'
+    +'<button class="nbtn" data-act="dp-month" data-step="1" aria-label="다음 달">›</button>'
+    +(dpMonth!==cur?'<button class="btn ghost" data-act="dp-month" data-step="0">이번 달</button>':'')
+    +'<span class="dp-sum">'+(cnt?cnt+'건 · '+dates.length+'일':'')+'</span>'
+    +'<span class="dp-right"><select class="fi" id="dpMonthSel" title="기록이 있는 달로 바로 가기">'+opts+'</select>'
+    +(cnt?'<button class="icbtn" data-act="dp-copy-month" title="이 달 목록을 날짜별로 묶어 복사해요">📋 이 달 전체 복사</button>':'')+'</span></div>';
+  var body=dates.length?dates.map(dpDayHtml).join('')
+    :'<div class="dp-empty">'+(all.length?dpMonthLabel(dpMonth)+'에 적은 배포가 없어요.':'아직 적은 배포가 없어요. [+ 배포 추가]에서 오늘 배포한 건을 적어 두세요.')+'</div>';
+  box.innerHTML=bar+body;
 }
 function dpModal(date,isEdit){
   var d=date||tISO();
@@ -1861,9 +1886,14 @@ function dpModal(date,isEdit){
     +'<button class="btn pri" data-act="dp-save" data-orig="'+(isEdit?d:'')+'">저장</button></div>');
   var ta=$('#dpTxt');if(ta)ta.focus();
 }
-function dpCopy(date){
-  var text=dpText(date);
-  copyText(text).then(function(){toast(dpDayLabel(date)+' 배포 '+dpItems(date).length+'건을 복사했어요');},function(){
+function dpCopyMonth(){
+  var dates=dpDates().filter(function(d){return dpMonthOf(d)===dpMonth;}).reverse();
+  var n=dates.reduce(function(a,d){return a+dpItems(d).length;},0);
+  dpCopyText(dates.map(function(d){return '['+dpDayLabel(d)+']\n'+dpText(d);}).join('\n\n\n'),dpMonthLabel(dpMonth)+' 배포 '+n+'건을 복사했어요');
+}
+function dpCopy(date){dpCopyText(dpText(date),dpDayLabel(date)+' 배포 '+dpItems(date).length+'건을 복사했어요');}
+function dpCopyText(text,okMsg){
+  copyText(text).then(function(){toast(okMsg);},function(){
     openModal('<h3 class="mtitle">배포 리스트</h3><p class="m-sub">자동 복사가 막혀 있어요. 아래 내용을 전체 선택(Ctrl+A) 후 복사(Ctrl+C)해 주세요.</p>'
       +'<textarea class="fi" style="min-height:200px" readonly>'+esc(text)+'</textarea>'
       +'<div class="factions"><button class="btn pri" data-act="modal-close">닫기</button></div>');
@@ -2240,6 +2270,9 @@ function wrRowHtml(it){
 }
 
 /* ══════════════ 일정보드 이벤트 ══════════════ */
+document.addEventListener('change',function(e){
+  if(e.target&&e.target.id==='dpMonthSel'){dpMonth=e.target.value;renderDeploy();}
+});
 document.addEventListener('click',function(e){
   var el=e.target.closest('[data-act]');
   if(!el)return;
@@ -2288,7 +2321,8 @@ document.addEventListener('click',function(e){
   else if(act==='dp-new')dpModal('',false);
   else if(act==='dp-edit')dpModal(el.dataset.date,true);
   else if(act==='dp-copy')dpCopy(el.dataset.date);
-  else if(act==='dp-toggle'){dpShowAll=!dpShowAll;renderDeploy();}
+  else if(act==='dp-month'){var st=+el.dataset.step;dpMonth=st?dpShiftMonth(dpMonth,st):dpMonthOf(tISO());renderDeploy();}
+  else if(act==='dp-copy-month')dpCopyMonth();
   else if(act==='dp-save'){
     var dDate=$('#dpDate').value,orig=el.dataset.orig,parsed=dpParse($('#dpTxt').value);
     if(!dDate){toast('작성일을 골라 주세요');return;}
@@ -2297,6 +2331,7 @@ document.addEventListener('click',function(e){
     var list=dpList();
     if(orig)sb.deploys=list=list.filter(function(x){return x.date!==orig;});
     parsed.forEach(function(it){list.push({id:uid('d'),date:dDate,title:it.title,url:it.url});});
+    if(parsed.length)dpMonth=dpMonthOf(dDate);
     sbSave();renderDeploy();closeModal();
     toast(orig?(parsed.length?'배포 리스트를 수정했어요':'배포 리스트를 지웠어요'):dpDayLabel(dDate)+' 배포 '+parsed.length+'건을 추가했어요');
   }
