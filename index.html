@@ -135,6 +135,13 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
 .tdy-glabel{font-size:11px;font-weight:700;color:var(--text3);padding:9px 16px 3px;background:var(--bg2)}
 .dchip.review{background:var(--blue-soft);color:var(--blue)}
 .tl-acts{margin-left:auto;display:flex;gap:2px}
+.sec-fold{display:inline-flex;align-items:center;gap:4px;font-size:12.5px;color:var(--text3);padding:5px 9px;border-radius:8px;border:none;background:none;font-family:var(--font);cursor:pointer}
+.sec-fold:hover{background:var(--bg2)}
+.sec-fold i{transition:transform .2s}
+.sec.folded .sec-fold i{transform:rotate(-90deg)}
+.sec.folded .sechd{margin-bottom:0}
+.sec.folded .sec-body,.sec.folded .fold-hide{display:none}
+.sectitle.fold-tgl{cursor:pointer}
 .dp-day{border:1px solid var(--border);border-radius:10px;margin-bottom:10px;overflow:hidden}
 .dp-dayhd{display:flex;align-items:center;gap:8px;padding:8px 10px 8px 14px;background:var(--bg2);font-size:13px;font-weight:700;color:var(--text2);flex-wrap:wrap}
 .dp-dayhd .dp-cnt{font-weight:500;color:var(--text3)}
@@ -431,19 +438,20 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
     <div class="cal-wrap" id="sbCal"></div>
   </div>
 
-  <div class="sec">
+  <div class="sec" data-fold="timeline">
     <div class="sechd">
-      <span class="sectitle"><i class="ti ti-timeline"></i> 프로젝트 타임라인<span class="ssub">디자인·퍼블이 연결된 업무</span></span>
+      <span class="sectitle fold-tgl" data-act="sec-fold" data-sec="timeline"><i class="ti ti-timeline"></i> 프로젝트 타임라인<span class="ssub">디자인·퍼블이 연결된 업무</span></span>
+      <div class="calnav"><button class="sec-fold" data-act="sec-fold" data-sec="timeline" aria-expanded="true"><i class="ti ti-chevron-down"></i><span>접기</span></button></div>
     </div>
-    <div id="sbTimeline"></div>
+    <div id="sbTimeline" class="sec-body"></div>
   </div>
 
-  <div class="sec">
+  <div class="sec" data-fold="deploy">
     <div class="sechd">
-      <span class="sectitle"><i class="ti ti-rocket"></i> 퍼블 배포 리스트<span class="ssub">월별·작성일별로 쌓여요</span></span>
-      <div class="calnav"><button class="btn ghost" data-act="dp-new">+ 배포 추가</button></div>
+      <span class="sectitle fold-tgl" data-act="sec-fold" data-sec="deploy"><i class="ti ti-rocket"></i> 퍼블 배포 리스트<span class="ssub">월별·작성일별로 쌓여요</span></span>
+      <div class="calnav"><button class="btn ghost fold-hide" data-act="dp-new">+ 배포 추가</button><button class="sec-fold" data-act="sec-fold" data-sec="deploy" aria-expanded="true"><i class="ti ti-chevron-down"></i><span>접기</span></button></div>
     </div>
-    <div id="sbDeploy"></div>
+    <div id="sbDeploy" class="sec-body"></div>
   </div>
 </div>
 
@@ -1807,6 +1815,27 @@ function reviewCheckPreview(items){
    추가/수정 모두 같은 형식의 텍스트를 붙여넣거나 적는 방식이라 입력이 가볍고,
    [복사]하면 같은 형식 그대로 메일·메신저에 붙여넣을 수 있다. */
 var dpMonth='';
+/* 섹션 접기 — 보는 사람마다 다를 수 있는 화면 취향이라 공유 데이터가 아니라
+   이 브라우저에만 기억한다(저장이 막힌 환경이면 그냥 펼친 상태로 시작). */
+var FOLD_LS='wdsb_fold_v1';
+function foldState(){try{return JSON.parse(localStorage.getItem(FOLD_LS)||'{}')||{};}catch(e){return {};}}
+function applyFold(){
+  var st=foldState();
+  document.querySelectorAll('.sec[data-fold]').forEach(function(sec){
+    var on=!!st[sec.dataset.fold];
+    sec.classList.toggle('folded',on);
+    sec.querySelectorAll('button.sec-fold').forEach(function(b){
+      b.setAttribute('aria-expanded',on?'false':'true');
+      b.querySelector('span').textContent=on?'펼치기':'접기';
+    });
+  });
+}
+function toggleFold(key){
+  var st=foldState();st[key]=!st[key];
+  try{localStorage.setItem(FOLD_LS,JSON.stringify(st));}catch(e){}
+  applyFold();
+}
+applyFold();
 function dpList(){return sb.deploys||(sb.deploys=[]);}
 function dpDates(){
   var seen={},out=[];
@@ -2318,6 +2347,7 @@ document.addEventListener('click',function(e){
     sb.reviews=(sb.reviews||[]).filter(function(r){return r.id!==el.dataset.id;});
     sbSave();renderSbAll();
   }
+  else if(act==='sec-fold')toggleFold(el.dataset.sec);
   else if(act==='dp-new')dpModal('',false);
   else if(act==='dp-edit')dpModal(el.dataset.date,true);
   else if(act==='dp-copy')dpCopy(el.dataset.date);
