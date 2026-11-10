@@ -135,6 +135,16 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
 .tdy-glabel{font-size:11px;font-weight:700;color:var(--text3);padding:9px 16px 3px;background:var(--bg2)}
 .dchip.review{background:var(--blue-soft);color:var(--blue)}
 .tl-acts{margin-left:auto;display:flex;gap:2px}
+.dp-day{border:1px solid var(--border);border-radius:10px;margin-bottom:10px;overflow:hidden}
+.dp-dayhd{display:flex;align-items:center;gap:8px;padding:8px 10px 8px 14px;background:var(--bg2);font-size:13px;font-weight:700;color:var(--text2);flex-wrap:wrap}
+.dp-dayhd .dp-cnt{font-weight:500;color:var(--text3)}
+.dp-dayhd .dp-acts{margin-left:auto;display:flex;gap:2px}
+.dp-item{display:flex;gap:10px;padding:10px 14px;border-top:1px solid var(--border);font-size:14px;align-items:baseline}
+.dp-no{font-weight:700;color:var(--text3);min-width:18px}
+.dp-body{display:flex;flex-direction:column;gap:2px;min-width:0}
+.dp-url{font-size:12.5px;color:var(--accent);word-break:break-all;text-decoration:none}
+.dp-url:hover{text-decoration:underline}
+.dp-empty{padding:18px 4px;color:var(--text3);font-size:14px}
 .icbtn{font-size:12px;color:var(--text3);padding:4px 8px;border-radius:7px;border:none;background:none;font-family:var(--font);cursor:pointer}
 .icbtn:hover{background:var(--white);color:var(--text)}
 .bar{display:flex;height:30px;border-radius:8px;overflow:hidden;font-size:12px;font-weight:600}
@@ -422,6 +432,14 @@ html,body{font-family:var(--font);font-size:15px;background:var(--bg);color:var(
     </div>
     <div id="sbTimeline"></div>
   </div>
+
+  <div class="sec">
+    <div class="sechd">
+      <span class="sectitle"><i class="ti ti-rocket"></i> 퍼블 배포 리스트<span class="ssub">작성일별로 쌓여요</span></span>
+      <div class="calnav"><button class="btn ghost" data-act="dp-new">+ 배포 추가</button></div>
+    </div>
+    <div id="sbDeploy"></div>
+  </div>
 </div>
 
 <!-- ═══ 지식지갑 ═══ -->
@@ -571,7 +589,7 @@ function loadSbState(){
   localStorage.setItem(SB_FLAG,'1');
   return sbSeed();
 }
-function sbBlank(){return {members:JSON.parse(JSON.stringify(DEFAULT_MEMBERS)),projects:[],tasks:[],reviews:[],milestones:[],vacations:[],ui:{},updatedAt:''};}
+function sbBlank(){return {members:JSON.parse(JSON.stringify(DEFAULT_MEMBERS)),projects:[],tasks:[],reviews:[],milestones:[],vacations:[],deploys:[],ui:{},updatedAt:''};}
 function sbStore(){localStorage.setItem(SB_LS,JSON.stringify(sb));}
 function sbSave(){delete sb._seed;sb.updatedAt=new Date().toISOString();sbStore();scheduleSyncPush();}
 function sbSeed(){
@@ -1620,7 +1638,7 @@ function distCopy(member){
     var ta=document.querySelector('#sb-mbox textarea');if(ta){ta.focus();ta.select();}
   });
 }
-function renderSbAll(){renderTodayBox();renderLegend();renderCards();renderSbTimeline();renderWorkload();}
+function renderSbAll(){renderTodayBox();renderLegend();renderCards();renderSbTimeline();renderWorkload();renderDeploy();}
 
 /* ══════════════ 모달 ══════════════ */
 function openModal(html){$('#sb-mbox').innerHTML=html;$('#sb-overlay').classList.add('on');}
@@ -1780,6 +1798,79 @@ function reviewCheckPreview(items){
     +'<button class="icbtn" data-act="rvck-add" style="margin-top:6px">+ 줄 추가</button>'
     +'<div class="factions"><button class="btn" data-act="modal-close">닫기</button><button class="btn pri" data-act="save-rvck">모두 등록</button></div>');
 }
+/* 퍼블 배포 리스트 — 작성일별로 "1. 제목 / 레드마인 링크" 형식으로 쌓는다.
+   추가/수정 모두 같은 형식의 텍스트를 붙여넣거나 적는 방식이라 입력이 가볍고,
+   [복사]하면 같은 형식 그대로 메일·메신저에 붙여넣을 수 있다. */
+var dpShowAll=false,DP_RECENT=5;
+function dpList(){return sb.deploys||(sb.deploys=[]);}
+function dpDates(){
+  var seen={},out=[];
+  dpList().forEach(function(d){if(!seen[d.date]){seen[d.date]=1;out.push(d.date);}});
+  return out.sort(function(a,b){return a<b?1:-1;});
+}
+function dpItems(date){return dpList().filter(function(d){return d.date===date;});}
+function dpDayLabel(s){
+  var d=fromISO(s),y=d.getFullYear()!==sbToday().getFullYear()?d.getFullYear()+'. ':'';
+  return y+(d.getMonth()+1)+'/'+d.getDate()+'('+'일월화수목금토'.charAt(d.getDay())+')';
+}
+function dpText(date){
+  return dpItems(date).map(function(it,i){return (i+1)+'. '+it.title+(it.url?'\n'+it.url:'');}).join('\n\n');
+}
+function dpParse(txt){
+  var items=[],cur=null,urlRe=/https?:\/\/\S+/;
+  String(txt||'').split(/\r?\n/).forEach(function(raw){
+    var line=raw.trim();if(!line)return;
+    var url='',m=line.match(urlRe);
+    if(m){url=m[0];line=line.replace(m[0],'').trim();}
+    else{var n=line.match(/^#?(\d{4,6})$/);if(n){url=RM_BASE+n[1];line='';}}
+    var title=line.replace(/^\d+\s*[.)]\s*/,'').replace(/^[-•·]\s*/,'').trim();
+    if(title){cur={title:title,url:url};items.push(cur);}
+    else if(url){if(cur&&!cur.url)cur.url=url;else{cur={title:'',url:url};items.push(cur);}}
+  });
+  return items.map(function(it){
+    if(!it.title){var r=it.url.match(/issues\/(\d+)/);it.title=r?'#'+r[1]:it.url;}
+    return it;
+  });
+}
+function renderDeploy(){
+  var box=$('#sbDeploy');if(!box)return;
+  var dates=dpDates(),t=tISO();
+  if(!dates.length){box.innerHTML='<div class="dp-empty">아직 적은 배포가 없어요. [+ 배포 추가]에서 오늘 배포한 건을 적어 두세요.</div>';return;}
+  var shown=dpShowAll?dates:dates.slice(0,DP_RECENT);
+  var html=shown.map(function(date){
+    var items=dpItems(date);
+    var today=date===t?'<span class="dchip open">오늘</span>':'';
+    return '<div class="dp-day"><div class="dp-dayhd">'+dpDayLabel(date)+today+'<span class="dp-cnt">'+items.length+'건</span>'
+      +'<span class="dp-acts"><button class="icbtn" data-act="dp-copy" data-date="'+date+'" title="이 날짜 목록을 같은 형식으로 복사해요">📋 복사</button>'
+      +'<button class="icbtn" data-act="dp-edit" data-date="'+date+'">수정</button></span></div>'
+      +items.map(function(it,i){
+        var link=it.url?'<a class="dp-url" href="'+esc(it.url)+'" target="_blank" rel="noopener">'+esc(it.url)+'</a>':'';
+        return '<div class="dp-item"><span class="dp-no">'+(i+1)+'.</span><span class="dp-body"><span>'+esc(it.title)+'</span>'+link+'</span></div>';
+      }).join('')+'</div>';
+  }).join('');
+  if(dates.length>DP_RECENT)html+='<button class="icbtn" data-act="dp-toggle">'+(dpShowAll?'최근 '+DP_RECENT+'일만 보기':'이전 배포 보기 ('+(dates.length-DP_RECENT)+'일)')+'</button>';
+  box.innerHTML=html;
+}
+function dpModal(date,isEdit){
+  var d=date||tISO();
+  openModal('<h3 class="mtitle">'+(isEdit?'배포 리스트 수정':'배포 추가')+'</h3>'
+    +'<p class="m-sub">'+(isEdit?'고친 내용으로 이 날짜 목록이 바뀌어요. 줄을 지우면 그 건이 빠지고, 전부 지우면 날짜째 없어져요.':'아래처럼 번호·제목 다음 줄에 레드마인 링크를 적으면 돼요. 링크 대신 일감 번호(22128)만 적어도 링크로 바꿔줘요. 같은 날짜에 이미 적은 게 있으면 뒤에 이어 붙어요.')+'</p>'
+    +'<label class="ph-head" for="dpDate" style="display:block;margin:0 0 4px">작성일</label><input type="date" id="dpDate" class="fi" value="'+d+'" style="max-width:180px;margin-bottom:10px">'
+    +'<textarea id="dpTxt" class="fi" style="min-height:190px" placeholder="1. HME 수험생 대상 수강생 등록 이벤트에 따른 개선&#10;http://10.30.100.24/issues/22128&#10;&#10;2. 수학왕, 보카킹 상장 개선&#10;http://10.30.100.24/issues/21980">'+(isEdit?esc(dpText(d)):'')+'</textarea>'
+    +'<div class="factions"><button class="btn" data-act="modal-close">취소</button>'
+    +'<button class="btn pri" data-act="dp-save" data-orig="'+(isEdit?d:'')+'">저장</button></div>');
+  var ta=$('#dpTxt');if(ta)ta.focus();
+}
+function dpCopy(date){
+  var text=dpText(date);
+  copyText(text).then(function(){toast(dpDayLabel(date)+' 배포 '+dpItems(date).length+'건을 복사했어요');},function(){
+    openModal('<h3 class="mtitle">배포 리스트</h3><p class="m-sub">자동 복사가 막혀 있어요. 아래 내용을 전체 선택(Ctrl+A) 후 복사(Ctrl+C)해 주세요.</p>'
+      +'<textarea class="fi" style="min-height:200px" readonly>'+esc(text)+'</textarea>'
+      +'<div class="factions"><button class="btn pri" data-act="modal-close">닫기</button></div>');
+    var ta=document.querySelector('#sb-mbox textarea');if(ta){ta.focus();ta.select();}
+  });
+}
+
 /* 팀원 연차 관리 — 팀 업무 분포(팀원별/달력)에 표시된다.
    한 건씩 입력하면 바로 반영되고, 기존에 등록된 목록은 그대로 유지된 채 아래에 쌓인다
    (전체를 다시 저장하는 방식이 아니라, 등록/삭제 각각이 즉시 sb.vacations에 반영됨). */
@@ -2193,6 +2284,21 @@ document.addEventListener('click',function(e){
   else if(act==='review-del'){
     sb.reviews=(sb.reviews||[]).filter(function(r){return r.id!==el.dataset.id;});
     sbSave();renderSbAll();
+  }
+  else if(act==='dp-new')dpModal('',false);
+  else if(act==='dp-edit')dpModal(el.dataset.date,true);
+  else if(act==='dp-copy')dpCopy(el.dataset.date);
+  else if(act==='dp-toggle'){dpShowAll=!dpShowAll;renderDeploy();}
+  else if(act==='dp-save'){
+    var dDate=$('#dpDate').value,orig=el.dataset.orig,parsed=dpParse($('#dpTxt').value);
+    if(!dDate){toast('작성일을 골라 주세요');return;}
+    if(!orig&&!parsed.length){toast('배포할 건을 한 줄 이상 적어 주세요');return;}
+    if(orig&&!parsed.length&&!confirm(dpDayLabel(orig)+' 배포 리스트를 모두 지울까요?'))return;
+    var list=dpList();
+    if(orig)sb.deploys=list=list.filter(function(x){return x.date!==orig;});
+    parsed.forEach(function(it){list.push({id:uid('d'),date:dDate,title:it.title,url:it.url});});
+    sbSave();renderDeploy();closeModal();
+    toast(orig?(parsed.length?'배포 리스트를 수정했어요':'배포 리스트를 지웠어요'):dpDayLabel(dDate)+' 배포 '+parsed.length+'건을 추가했어요');
   }
   else if(act==='vac-open'){vacShowPast=false;vacModal();}
   else if(act==='vac-toggle-past'){vacShowPast=!vacShowPast;vacModal();}
